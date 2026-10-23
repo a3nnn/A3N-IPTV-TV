@@ -430,7 +430,7 @@ class RemoteLongPress extends StatefulWidget {
 }
 
 class _RemoteLongPressState extends State<RemoteLongPress> {
-  static const _keys = {
+  static final _keys = {
     LogicalKeyboardKey.select,
     LogicalKeyboardKey.enter,
     LogicalKeyboardKey.numpadEnter,

@@ -190,7 +190,6 @@ class _SwitchRow extends StatelessWidget {
     return SwitchListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 8),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      focusColor: fade(AppConfig.primary, 0.25),
       title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
       subtitle: Text(subtitle, style: const TextStyle(fontSize: 12, color: AppConfig.textSecondary)),
       value: value,
