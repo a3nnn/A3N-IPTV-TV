@@ -25,6 +25,12 @@ ThemeData buildTheme() {
     fontFamily: 'Roboto',
     scaffoldBackgroundColor: AppConfig.background,
     dividerColor: AppConfig.divider,
+    // Simple fade between pages: no screenshot of the old page (lighter, avoids
+    // crashes on some TV GPUs while a video is on screen).
+    pageTransitionsTheme: const PageTransitionsTheme(builders: {
+      TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
+    }),
+    splashFactory: NoSplash.splashFactory,
     focusColor: fade(AppConfig.primary, 0.30),
     hoverColor: fade(AppConfig.textPrimary, 0.05),
     dividerTheme: const DividerThemeData(color: AppConfig.divider, thickness: 1, space: 1),

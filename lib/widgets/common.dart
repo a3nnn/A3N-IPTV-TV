@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../config.dart';
 import '../utils.dart';
@@ -57,7 +58,7 @@ class NetImage extends StatelessWidget {
       fit: fit,
       cacheWidth: cacheWidth,
       gaplessPlayback: true,
-      filterQuality: FilterQuality.medium,
+      filterQuality: FilterQuality.low,
       errorBuilder: (_, __, ___) => _fallback(),
     );
   }
@@ -93,6 +94,7 @@ class SelectableRow extends StatefulWidget {
   final double height;
   final FocusNode? focusNode;
   final bool autofocus;
+  final VoidCallback? onLongPress;
 
   const SelectableRow({
     super.key,
@@ -105,6 +107,7 @@ class SelectableRow extends StatefulWidget {
     this.height = 48,
     this.focusNode,
     this.autofocus = false,
+    this.onLongPress,
   });
 
   @override
@@ -118,12 +121,16 @@ class _SelectableRowState extends State<SelectableRow> {
   Widget build(BuildContext context) {
     final selected = widget.selected;
     final edge = _focused ? AppConfig.textPrimary : (selected ? AppConfig.primary : Colors.transparent);
-    return Material(
+    return RemoteLongPress(
+      onTap: widget.onTap,
+      onLongPress: widget.onLongPress,
+      child: Material(
       color: _focused
           ? fade(AppConfig.primary, 0.28)
           : (selected ? fade(AppConfig.primary, 0.14) : Colors.transparent),
       child: InkWell(
         onTap: widget.onTap,
+        onLongPress: widget.onLongPress,
         focusNode: widget.focusNode,
         autofocus: widget.autofocus,
         onFocusChange: (f) => setState(() => _focused = f),
@@ -171,6 +178,7 @@ class _SelectableRowState extends State<SelectableRow> {
           ),
         ),
       ),
+    ),
     );
   }
 }
@@ -377,4 +385,107 @@ class _TvSearchButtonState extends State<TvSearchButton> {
       ),
     );
   }
+}
+
+/// ☆ Favorite / ★ Favorited — outlined button with a clear focus ring for the remote.
+class FavoriteButton extends StatelessWidget {
+  final bool active;
+  final VoidCallback onPressed;
+  const FavoriteButton({super.key, required this.active, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: onPressed,
+      icon: Icon(active ? Icons.star_rounded : Icons.star_outline_rounded,
+          color: active ? AppConfig.accent : AppConfig.textPrimary),
+      label: Text(active ? 'Favorited' : 'Favorite',
+          style: TextStyle(color: active ? AppConfig.accent : AppConfig.textPrimary)),
+      style: ButtonStyle(
+        minimumSize: const WidgetStatePropertyAll(Size(150, 50)),
+        shape: WidgetStatePropertyAll(RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+        side: WidgetStateProperty.resolveWith(
+          (s) => BorderSide(
+            color: s.contains(WidgetState.focused) ? AppConfig.textPrimary : AppConfig.divider,
+            width: s.contains(WidgetState.focused) ? 3 : 1.5,
+          ),
+        ),
+        overlayColor: WidgetStatePropertyAll(fade(AppConfig.primary, 0.18)),
+      ),
+    );
+  }
+}
+
+
+/// Short press of OK = [onTap], hold OK for ~0.6 s = [onLongPress].
+/// Works with the TV remote (and with touch / mouse via the child InkWell).
+class RemoteLongPress extends StatefulWidget {
+  final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+  final Widget child;
+  const RemoteLongPress({super.key, required this.onTap, required this.onLongPress, required this.child});
+
+  @override
+  State<RemoteLongPress> createState() => _RemoteLongPressState();
+}
+
+class _RemoteLongPressState extends State<RemoteLongPress> {
+  static const _keys = {
+    LogicalKeyboardKey.select,
+    LogicalKeyboardKey.enter,
+    LogicalKeyboardKey.numpadEnter,
+    LogicalKeyboardKey.gameButtonA,
+  };
+  Timer? _timer;
+  bool _down = false;
+  bool _fired = false;
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  KeyEventResult _onKey(FocusNode node, KeyEvent e) {
+    if (widget.onLongPress == null || !_keys.contains(e.logicalKey)) return KeyEventResult.ignored;
+    if (e is KeyDownEvent) {
+      _down = true;
+      _fired = false;
+      _timer?.cancel();
+      _timer = Timer(const Duration(milliseconds: 600), () {
+        if (_down && !_fired) {
+          _fired = true;
+          HapticFeedback.mediumImpact();
+          widget.onLongPress?.call();
+        }
+      });
+      return KeyEventResult.handled;
+    }
+    if (e is KeyRepeatEvent) return _down ? KeyEventResult.handled : KeyEventResult.ignored;
+    if (e is KeyUpEvent) {
+      if (!_down) return KeyEventResult.ignored;
+      _timer?.cancel();
+      final tap = !_fired;
+      _down = false;
+      if (tap) widget.onTap();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  @override
+  Widget build(BuildContext context) => Focus(
+        canRequestFocus: false,
+        skipTraversal: true,
+        onKeyEvent: _onKey,
+        child: widget.child,
+      );
+}
+
+/// Small confirmation at the bottom of the screen.
+void showToast(BuildContext context, String text) {
+  final m = ScaffoldMessenger.maybeOf(context);
+  if (m == null) return;
+  m.hideCurrentSnackBar();
+  m.showSnackBar(SnackBar(content: Text(text), duration: const Duration(milliseconds: 1600)));
 }

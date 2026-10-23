@@ -8,8 +8,16 @@ import '../utils.dart';
 import '../widgets/brand.dart';
 import 'login_screen.dart';
 
-class SettingsSection extends StatelessWidget {
+class SettingsSection extends StatefulWidget {
   const SettingsSection({super.key});
+
+  @override
+  State<SettingsSection> createState() => _SettingsSectionState();
+}
+
+class _SettingsSectionState extends State<SettingsSection> {
+  bool _preview = Storage.previewEnabled;
+  bool _compatible = Storage.compatibleDecoder;
 
   Future<void> _logout(BuildContext context) async {
     final ok = await showDialog<bool>(
@@ -68,7 +76,35 @@ class SettingsSection extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 20),
+        _Card(
+          title: 'Playback',
+          children: [
+            _SwitchRow(
+              title: 'Preview video while browsing',
+              subtitle: 'Off = lighter: OK on a channel opens it full screen directly',
+              value: _preview,
+              onChanged: (v) {
+                setState(() => _preview = v);
+                Storage.setPreviewEnabled(v);
+              },
+            ),
+            _SwitchRow(
+              title: 'Compatible video mode',
+              subtitle: 'Only if channels show a black picture or no video. Restart the app after changing.',
+              value: _compatible,
+              onChanged: (v) {
+                setState(() => _compatible = v);
+                Storage.setCompatibleDecoder(v);
+                ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                  const SnackBar(content: Text('Close and reopen the app to apply.')),
+                );
+              },
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
         const _Card(
+          focusable: true,
           title: 'Remote control',
           children: [
             _InfoRow('Play a channel', 'OK on a channel (press OK again for full screen)'),
@@ -80,6 +116,7 @@ class SettingsSection extends StatelessWidget {
         ),
         const SizedBox(height: 20),
         _Card(
+          focusable: true,
           title: 'About',
           children: [
             const Padding(
@@ -95,31 +132,69 @@ class SettingsSection extends StatelessWidget {
   }
 }
 
-class _Card extends StatelessWidget {
+class _Card extends StatefulWidget {
   final String title;
   final List<Widget> children;
-  const _Card({required this.title, required this.children});
+  /// Cards with only text get focus themselves, so the remote can scroll to them.
+  final bool focusable;
+  const _Card({required this.title, required this.children, this.focusable = false});
+
+  @override
+  State<_Card> createState() => _CardState();
+}
+
+class _CardState extends State<_Card> {
+  bool _focused = false;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final card = Container(
       constraints: const BoxConstraints(maxWidth: 720),
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
         color: AppConfig.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppConfig.divider),
+        border: Border.all(
+          color: _focused ? AppConfig.textPrimary : AppConfig.divider,
+          width: _focused ? 2 : 1,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title.toUpperCase(),
+          Text(widget.title.toUpperCase(),
               style: const TextStyle(
                   fontSize: 12, letterSpacing: 1.3, color: AppConfig.textSecondary, fontWeight: FontWeight.w700)),
           const SizedBox(height: 10),
-          ...children,
+          ...widget.children,
         ],
       ),
+    );
+    if (!widget.focusable) return card;
+    return Focus(
+      onFocusChange: (f) => setState(() => _focused = f),
+      child: card,
+    );
+  }
+}
+
+class _SwitchRow extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+  const _SwitchRow({required this.title, required this.subtitle, required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return SwitchListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      focusColor: fade(AppConfig.primary, 0.25),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+      subtitle: Text(subtitle, style: const TextStyle(fontSize: 12, color: AppConfig.textSecondary)),
+      value: value,
+      onChanged: onChanged,
     );
   }
 }

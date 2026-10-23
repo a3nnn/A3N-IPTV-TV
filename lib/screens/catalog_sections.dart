@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../config.dart';
 import '../data/models.dart';
+import '../data/storage.dart';
 import '../data/xtream_api.dart';
 import '../utils.dart';
 import '../widgets/category_panel.dart';
@@ -10,15 +11,18 @@ import 'player_page.dart';
 import 'series_detail_screen.dart';
 
 const String _allId = '__all';
+const String _favId = '__fav';
 
 class CatalogItem {
+  final int id;
   final String title;
   final String image;
   final String categoryId;
   final double rating;
-  final void Function(BuildContext context) onOpen;
+  final Future<void> Function(BuildContext context) onOpen;
 
   const CatalogItem({
+    required this.id,
     required this.title,
     required this.image,
     required this.categoryId,
@@ -47,6 +51,7 @@ class MoviesSection extends StatelessWidget {
       cats,
       movies
           .map((m) => CatalogItem(
+                id: m.id,
                 title: m.name,
                 image: m.poster,
                 categoryId: m.categoryId,
@@ -61,7 +66,7 @@ class MoviesSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      CatalogSection(section: 'movies', load: _load, allLabel: 'All Movies', searchHint: 'Search movies');
+      CatalogSection(section: 'movies', favKey: 'fav_movies', load: _load, allLabel: 'All Movies', searchHint: 'Search movies');
 }
 
 // ------------------------------------------------------------ Series
@@ -78,6 +83,7 @@ class SeriesSection extends StatelessWidget {
       cats,
       list
           .map((s) => CatalogItem(
+                id: s.id,
                 title: s.name,
                 image: s.cover,
                 categoryId: s.categoryId,
@@ -92,7 +98,7 @@ class SeriesSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      CatalogSection(section: 'series', load: _load, allLabel: 'All Series', searchHint: 'Search series');
+      CatalogSection(section: 'series', favKey: 'fav_series', load: _load, allLabel: 'All Series', searchHint: 'Search series');
 }
 
 // ------------------------------------------------------------ shared grid
@@ -102,8 +108,9 @@ class CatalogSection extends StatefulWidget {
   final String allLabel;
   final String searchHint;
   final String section;
+  final String favKey;
 
-  const CatalogSection({super.key, required this.section, required this.load, required this.allLabel, required this.searchHint});
+  const CatalogSection({super.key, required this.section, required this.favKey, required this.load, required this.allLabel, required this.searchHint});
 
   @override
   State<CatalogSection> createState() => _CatalogSectionState();
@@ -161,9 +168,34 @@ class _CatalogSectionState extends State<CatalogSection> {
     }
   }
 
+  Set<int> get _favs => widget.favKey == 'fav_movies' ? Storage.favMovies : Storage.favSeries;
+
+  Future<void> _open(CatalogItem item) async {
+    await item.onOpen(context);
+    // Favorites may have changed on the detail screen.
+    if (mounted && _categoryId == _favId) setState(_applyFilter);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _toggleFav(CatalogItem item) async {
+    final added = await Storage.toggleFav(widget.favKey, item.id);
+    if (!mounted) return;
+    showToast(context, added ? '★  ${item.title} added to favorites' : '${item.title} removed from favorites');
+    setState(() {
+      if (_categoryId == _favId) _applyFilter();
+    });
+  }
+
   void _applyFilter() {
-    Iterable<CatalogItem> list =
-        _categoryId == _allId ? _data.items : _data.items.where((i) => i.categoryId == _categoryId);
+    Iterable<CatalogItem> list;
+    if (_categoryId == _allId) {
+      list = _data.items;
+    } else if (_categoryId == _favId) {
+      final favs = _favs;
+      list = _data.items.where((i) => favs.contains(i.id));
+    } else {
+      list = _data.items.where((i) => i.categoryId == _categoryId);
+    }
     final q = _query.trim().toLowerCase();
     if (q.isNotEmpty) list = list.where((i) => i.title.toLowerCase().contains(q));
     _visible = list.toList();
@@ -179,6 +211,7 @@ class _CatalogSectionState extends State<CatalogSection> {
 
   @override
   Widget build(BuildContext context) {
+    final favs = _favs;
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null) return ErrorView(message: _error!, onRetry: _load);
 
@@ -191,6 +224,13 @@ class _CatalogSectionState extends State<CatalogSection> {
             selectedId: _categoryId,
             onSelect: _selectCategory,
             entries: [
+              CategoryEntry(
+                  id: _favId,
+                  name: 'Favorites',
+                  count: _data.items.where((i) => _favs.contains(i.id)).length,
+                  fixed: true,
+                  icon: Icons.star_rounded,
+                  iconColor: AppConfig.accent),
               CategoryEntry(id: _allId, name: widget.allLabel, count: _data.items.length, fixed: true),
               ..._data.categories.map((c) => CategoryEntry(id: c.id, name: c.name, count: _counts[c.id] ?? 0)),
             ],
@@ -216,7 +256,13 @@ class _CatalogSectionState extends State<CatalogSection> {
               ),
               Expanded(
                 child: _visible.isEmpty
-                    ? const Center(child: Text('Nothing here', style: TextStyle(color: AppConfig.textSecondary)))
+                    ? Center(
+                        child: Text(
+                          _categoryId == _favId ? 'No favorites yet.\nHold OK on a poster to add it.' : 'Nothing here',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: AppConfig.textSecondary),
+                        ),
+                      )
                     : Scrollbar(
                         controller: _gridScroll,
                         child: GridView.builder(
@@ -229,7 +275,15 @@ class _CatalogSectionState extends State<CatalogSection> {
                             childAspectRatio: 0.56,
                           ),
                           itemCount: _visible.length,
-                          itemBuilder: (context, i) => PosterCard(item: _visible[i]),
+                          itemBuilder: (context, i) {
+                            final item = _visible[i];
+                            return PosterCard(
+                              item: item,
+                              favorite: favs.contains(item.id),
+                              onOpen: () => _open(item),
+                              onLongPress: () => _toggleFav(item),
+                            );
+                          },
                         ),
                       ),
               ),
@@ -243,7 +297,18 @@ class _CatalogSectionState extends State<CatalogSection> {
 
 class PosterCard extends StatefulWidget {
   final CatalogItem item;
-  const PosterCard({super.key, required this.item});
+  final VoidCallback onOpen;
+  final VoidCallback onLongPress;
+  final bool favorite;
+  final bool autofocus;
+  const PosterCard({
+    super.key,
+    required this.item,
+    required this.onOpen,
+    required this.onLongPress,
+    this.favorite = false,
+    this.autofocus = false,
+  });
 
   @override
   State<PosterCard> createState() => _PosterCardState();
@@ -260,8 +325,13 @@ class _PosterCardState extends State<PosterCard> {
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
-      child: InkWell(
-        onTap: () => item.onOpen(context),
+      child: RemoteLongPress(
+        onTap: widget.onOpen,
+        onLongPress: widget.onLongPress,
+        child: InkWell(
+        onTap: widget.onOpen,
+        onLongPress: widget.onLongPress,
+        autofocus: widget.autofocus,
         onFocusChange: (f) => setState(() => _focus = f),
         focusColor: Colors.transparent,
         hoverColor: Colors.transparent,
@@ -271,8 +341,7 @@ class _PosterCardState extends State<PosterCard> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
+              child: Container(
                 decoration: BoxDecoration(
                   color: AppConfig.surfaceHigh,
                   borderRadius: BorderRadius.circular(10),
@@ -286,7 +355,13 @@ class _PosterCardState extends State<PosterCard> {
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      NetImage(url: item.image, fallbackIcon: Icons.movie_outlined, cacheWidth: 360),
+                      NetImage(url: item.image, fallbackIcon: Icons.movie_outlined, cacheWidth: 300),
+                      if (widget.favorite)
+                        const Positioned(
+                          top: 6,
+                          left: 6,
+                          child: Icon(Icons.star_rounded, size: 22, color: AppConfig.accent),
+                        ),
                       if (item.rating > 0)
                         Positioned(
                           top: 6,
@@ -327,6 +402,7 @@ class _PosterCardState extends State<PosterCard> {
           ],
         ),
       ),
+    ),
     );
   }
 }

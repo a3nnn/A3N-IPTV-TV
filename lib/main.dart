@@ -12,6 +12,11 @@ Future<void> main() async {
   MediaKit.ensureInitialized();
   await Storage.init();
 
+  // Keep decoded logos/posters small in memory (TVs have little RAM).
+  PaintingBinding.instance.imageCache
+    ..maximumSize = 250
+    ..maximumSizeBytes = 40 << 20;
+
   // Full screen on the TV: no status or navigation bars.
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   await SystemChrome.setPreferredOrientations([

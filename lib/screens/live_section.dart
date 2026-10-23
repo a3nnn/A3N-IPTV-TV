@@ -128,7 +128,7 @@ class _LiveSectionState extends State<LiveSection> {
       }
     }
     if (channel != null) {
-      _select(channel, scroll: true);
+      _select(channel, scroll: true, play: Storage.previewEnabled);
     } else {
       setState(() {});
     }
@@ -156,7 +156,7 @@ class _LiveSectionState extends State<LiveSection> {
     if (_channelScroll.hasClients) _channelScroll.jumpTo(0);
   }
 
-  Future<void> _select(LiveChannel ch, {bool scroll = false}) async {
+  Future<void> _select(LiveChannel ch, {bool scroll = false, bool play = true}) async {
     setState(() {
       _current = ch;
       _epg = [];
@@ -164,7 +164,7 @@ class _LiveSectionState extends State<LiveSection> {
     });
     Storage.setLastChannel(ch.id);
     Storage.setLastCategory(_categoryId);
-    _svc.play(Session.api!.liveUrl(ch));
+    if (play) _svc.play(Session.api!.liveUrl(ch));
     if (scroll) WidgetsBinding.instance.addPostFrameCallback((_) => _scrollTo(ch));
     _showOverlay();
 
@@ -221,6 +221,7 @@ class _LiveSectionState extends State<LiveSection> {
 
   Future<void> _setFullscreen(bool value) async {
     if (_current == null && value) return;
+    if (!value && !Storage.previewEnabled) _svc.stop();
     _svc.fullscreen.value = value;
     setState(() {});
     if (value) {
@@ -341,7 +342,7 @@ class _LiveSectionState extends State<LiveSection> {
               ? Center(
                   child: Text(
                     _categoryId == _favId
-                        ? 'No favorites yet.\nPress the star next to a channel to add it.'
+                        ? 'No favorites yet.\nHold OK on a channel to add it.'
                         : 'No channels found',
                     textAlign: TextAlign.center,
                     style: const TextStyle(color: AppConfig.textSecondary),
@@ -369,7 +370,16 @@ class _LiveSectionState extends State<LiveSection> {
       selected: selected,
       focusNode: selected ? _currentChannelFocus : null,
       autofocus: selected,
-      onTap: () => selected ? _setFullscreen(true) : _select(c),
+      onTap: () {
+        if (!Storage.previewEnabled) {
+          // Light mode: no preview, open the channel full screen right away.
+          _select(c).then((_) => _setFullscreen(true));
+        } else if (selected) {
+          _setFullscreen(true);
+        } else {
+          _select(c);
+        }
+      },
       leading: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -386,15 +396,16 @@ class _LiveSectionState extends State<LiveSection> {
       ),
       title: c.name,
       subtitle: selected ? _now?.title : null,
-      trailing: IconButton(
-        tooltip: fav ? 'Remove from favorites' : 'Add to favorites',
-        onPressed: () => _toggleFavorite(c),
-        icon: Icon(
-          fav ? Icons.star_rounded : Icons.star_outline_rounded,
-          size: 20,
-          color: fav ? AppConfig.accent : fade(AppConfig.textSecondary, 0.6),
-        ),
-      ),
+      onLongPress: () {
+        _toggleFavorite(c);
+        showToast(context, _favorites.contains(c.id) ? '★  ${c.name} added to favorites' : '${c.name} removed from favorites');
+      },
+      trailing: fav
+          ? const Padding(
+              padding: EdgeInsets.only(right: 10),
+              child: Icon(Icons.star_rounded, size: 18, color: AppConfig.accent),
+            )
+          : null,
     );
   }
 
@@ -421,7 +432,9 @@ class _LiveSectionState extends State<LiveSection> {
                   borderRadius: BorderRadius.circular(12),
                   child: ColoredBox(
                     color: Colors.black,
-                    child: ch == null ? _emptyPreview() : _previewPlayer(),
+                    child: ch == null
+                        ? _emptyPreview()
+                        : (Storage.previewEnabled ? _previewPlayer() : _previewOff(ch)),
                   ),
                 ),
               ),
@@ -450,6 +463,17 @@ class _LiveSectionState extends State<LiveSection> {
       ),
     );
   }
+
+  Widget _previewOff(LiveChannel ch) => Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ChannelLogo(url: ch.logo, size: 72),
+            const SizedBox(height: 12),
+            const Text('Press OK to watch', style: TextStyle(color: AppConfig.textSecondary)),
+          ],
+        ),
+      );
 
   Widget _emptyPreview() => const Center(
         child: Column(

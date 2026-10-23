@@ -65,4 +65,28 @@ class Storage {
       await _p.setString('license_message', message);
     }
   }
+
+  // ---------- TV settings ----------
+  /// Use the "Compatible" video decoder (only if "Fast" shows a black picture).
+  static bool get compatibleDecoder => _p.getBool('compatible_decoder') ?? false;
+  static Future<void> setCompatibleDecoder(bool v) => _p.setBool('compatible_decoder', v);
+
+  /// Play the channel in the small preview while browsing.
+  static bool get previewEnabled => _p.getBool('preview_enabled') ?? true;
+  static Future<void> setPreviewEnabled(bool v) => _p.setBool('preview_enabled', v);
+
+  // ---------- Movie / series favorites ----------
+  static Set<int> _ids(String key) =>
+      (_p.getStringList(key) ?? const []).map(int.tryParse).whereType<int>().toSet();
+
+  static Set<int> get favMovies => _ids('fav_movies');
+  static Set<int> get favSeries => _ids('fav_series');
+
+  static Future<bool> toggleFav(String key, int id) async {
+    final ids = _ids(key);
+    final added = !ids.remove(id);
+    if (added) ids.add(id);
+    await _p.setStringList(key, ids.map((e) => '$e').toList());
+    return added;
+  }
 }

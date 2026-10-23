@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../config.dart';
 import '../data/storage.dart';
-import '../utils.dart';
 import 'common.dart';
 
 class CategoryEntry {
@@ -51,8 +50,6 @@ class CategoryPanel extends StatefulWidget {
 
 class _CategoryPanelState extends State<CategoryPanel> {
   late List<String> _pinned = List.of(Storage.pinned(widget.section));
-  String? _hoverId;
-  String? _focusId;
 
   void _togglePin(String id) {
     setState(() {
@@ -93,63 +90,38 @@ class _CategoryPanelState extends State<CategoryPanel> {
       );
 
   Widget _row(CategoryEntry e, {required bool pinned}) {
-    final hover = _hoverId == e.id || _focusId == e.id;
-    final showPin = !e.fixed && (pinned || hover);
-
-    return Focus(
+    return SizedBox(
       key: ValueKey('cat-${e.id}'),
-      canRequestFocus: false,
-      skipTraversal: true,
-      onFocusChange: (f) => setState(() {
-        if (f) {
-          _focusId = e.id;
-        } else if (_focusId == e.id) {
-          _focusId = null;
-        }
-      }),
-      child: MouseRegion(
-      onEnter: (_) => setState(() => _hoverId = e.id),
-      onExit: (_) => setState(() {
-        if (_hoverId == e.id) _hoverId = null;
-      }),
-      child: SizedBox(
-        height: 48,
-        child: SelectableRow(
-          selected: e.id == widget.selectedId,
-          autofocus: widget.autofocusSelected && e.id == widget.selectedId,
-          onTap: () => widget.onSelect(e.id),
-          leading: e.icon != null
-              ? Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: Icon(e.icon, size: 18, color: e.iconColor ?? AppConfig.textSecondary),
-                )
-              : null,
-          title: e.name,
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CountLabel(e.count),
-              if (!e.fixed)
-                SizedBox(
-                  width: 30,
-                  child: showPin
-                      ? IconButton(
-                          tooltip: pinned ? 'Unpin' : 'Pin to top',
-                          padding: EdgeInsets.zero,
-                          iconSize: 17,
-                          onPressed: () => _togglePin(e.id),
-                          icon: Icon(
-                            pinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
-                            color: pinned ? AppConfig.primary : fade(AppConfig.textSecondary, 0.8),
-                          ),
-                        )
-                      : null,
-                ),
-            ],
-          ),
+      height: 48,
+      child: SelectableRow(
+        selected: e.id == widget.selectedId,
+        autofocus: widget.autofocusSelected && e.id == widget.selectedId,
+        onTap: () => widget.onSelect(e.id),
+        onLongPress: e.fixed
+            ? null
+            : () {
+                _togglePin(e.id);
+                showToast(context, _pinned.contains(e.id) ? '📌  ${e.name} pinned to top' : '${e.name} unpinned');
+              },
+        leading: e.icon != null
+            ? Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Icon(e.icon, size: 18, color: e.iconColor ?? AppConfig.textSecondary),
+              )
+            : null,
+        title: e.name,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (pinned)
+              const Padding(
+                padding: EdgeInsets.only(right: 6),
+                child: Icon(Icons.push_pin_rounded, size: 15, color: AppConfig.primary),
+              ),
+            CountLabel(e.count),
+          ],
         ),
       ),
-    ),
     );
   }
 }

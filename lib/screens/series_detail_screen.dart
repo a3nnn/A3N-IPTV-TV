@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../config.dart';
 import '../data/models.dart';
+import '../data/storage.dart';
 import '../data/xtream_api.dart';
 import '../utils.dart';
 import '../widgets/common.dart';
@@ -21,6 +22,12 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
   String? _error;
   SeriesInfo? _info;
   int? _season;
+  late bool _fav = Storage.favSeries.contains(widget.series.id);
+
+  Future<void> _toggleFav() async {
+    final added = await Storage.toggleFav('fav_series', widget.series.id);
+    if (mounted) setState(() => _fav = added);
+  }
 
   @override
   void initState() {
@@ -119,6 +126,8 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
                     Text(s.rating.toStringAsFixed(1), style: const TextStyle(color: AppConfig.textSecondary)),
                   ]),
                 ],
+                const SizedBox(height: 16),
+                FavoriteButton(active: _fav, onPressed: _toggleFav),
                 if (plot.isNotEmpty) ...[
                   const SizedBox(height: 14),
                   Text(plot, style: const TextStyle(fontSize: 13.5, height: 1.5, color: AppConfig.textSecondary)),
@@ -158,7 +167,7 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
                         padding: const EdgeInsets.symmetric(vertical: 8),
                         itemCount: episodes.length,
                         separatorBuilder: (_, __) => const Divider(height: 1, indent: 24, endIndent: 24),
-                        itemBuilder: (context, i) => _EpisodeTile(episode: episodes[i], onTap: () => _play(episodes[i])),
+                        itemBuilder: (context, i) => _EpisodeTile(episode: episodes[i], autofocus: i == 0, onTap: () => _play(episodes[i])),
                       ),
                     ),
                   ],
@@ -172,13 +181,15 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
 class _EpisodeTile extends StatelessWidget {
   final Episode episode;
   final VoidCallback onTap;
-  const _EpisodeTile({required this.episode, required this.onTap});
+  final bool autofocus;
+  const _EpisodeTile({required this.episode, required this.onTap, this.autofocus = false});
 
   @override
   Widget build(BuildContext context) {
     final e = episode;
     return InkWell(
       onTap: onTap,
+      autofocus: autofocus,
       hoverColor: fade(AppConfig.textPrimary, 0.05),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),

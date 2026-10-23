@@ -47,6 +47,18 @@ def set_app_attr(text, name, value):
 
 m = set_app_attr(m, "android:banner", "@drawable/banner")
 m = set_app_attr(m, "android:usesCleartextTraffic", "true")  # IPTV hosts are plain http
+m = set_app_attr(m, "android:largeHeap", "true")
+m = set_app_attr(m, "android:hardwareAccelerated", "true")
+
+# Use the OpenGL renderer instead of Impeller/Vulkan: Vulkan drivers on many TVs
+# are buggy and crash together with a video surface.
+if "EnableImpeller" not in m:
+    m = m.replace(
+        "</application>",
+        '    <meta-data android:name="io.flutter.embedding.android.EnableImpeller" android:value="false"/>\n'
+        '    </application>',
+        1,
+    )
 
 # Show the app in the Android TV launcher
 if "LEANBACK_LAUNCHER" not in m:
@@ -60,6 +72,6 @@ if "LEANBACK_LAUNCHER" not in m:
 MANIFEST.write_text(m, encoding="utf-8")
 print(m)
 
-for check in ["INTERNET", "LEANBACK_LAUNCHER", "android:banner", "usesCleartextTraffic"]:
+for check in ["INTERNET", "LEANBACK_LAUNCHER", "android:banner", "usesCleartextTraffic", "largeHeap", "EnableImpeller"]:
     assert check in m, f"manifest patch failed: {check}"
 print("Android TV patch OK")
