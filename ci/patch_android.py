@@ -29,6 +29,7 @@ def add_after_manifest_open(text, snippet):
 
 for line in [
     '<uses-permission android:name="android.permission.INTERNET"/>',
+    '<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>',
     '<uses-feature android:name="android.software.leanback" android:required="false"/>',
     '<uses-feature android:name="android.hardware.touchscreen" android:required="false"/>',
 ]:
@@ -72,6 +73,6 @@ if "LEANBACK_LAUNCHER" not in m:
 MANIFEST.write_text(m, encoding="utf-8")
 print(m)
 
-for check in ["INTERNET", "LEANBACK_LAUNCHER", "android:banner", "usesCleartextTraffic", "largeHeap", "EnableImpeller"]:
+for check in ["INTERNET", "REQUEST_INSTALL_PACKAGES", "LEANBACK_LAUNCHER", "android:banner", "usesCleartextTraffic", "largeHeap", "EnableImpeller"]:
     assert check in m, f"manifest patch failed: {check}"
 print("Android TV patch OK")

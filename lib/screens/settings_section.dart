@@ -6,6 +6,7 @@ import '../data/xtream_api.dart';
 import '../player/player_service.dart';
 import '../utils.dart';
 import '../widgets/brand.dart';
+import '../widgets/update_dialog.dart';
 import 'login_screen.dart';
 
 class SettingsSection extends StatefulWidget {
@@ -116,7 +117,6 @@ class _SettingsSectionState extends State<SettingsSection> {
         ),
         const SizedBox(height: 20),
         _Card(
-          focusable: true,
           title: 'About',
           children: [
             const Padding(
@@ -125,6 +125,15 @@ class _SettingsSectionState extends State<SettingsSection> {
             ),
             const _InfoRow('Version', AppConfig.version),
             const _InfoRow('', AppConfig.signature),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton.icon(
+                onPressed: () => checkForUpdatesManually(context),
+                icon: const Icon(Icons.system_update_rounded),
+                label: const Text('Check for updates'),
+              ),
+            ),
           ],
         ),
       ],

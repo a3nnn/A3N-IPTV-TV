@@ -6,10 +6,12 @@ import 'package:flutter/services.dart';
 import '../config.dart';
 import '../data/license_service.dart';
 import '../data/storage.dart';
+import '../data/update_service.dart';
 import '../data/xtream_api.dart';
 import '../player/player_service.dart';
 import '../utils.dart';
 import '../widgets/common.dart';
+import '../widgets/update_dialog.dart';
 import 'blocked_screen.dart';
 import 'catalog_sections.dart';
 import 'live_section.dart';
@@ -56,6 +58,17 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     // Re-check every 10 minutes so a block takes effect while the app is open.
     _licenseTimer = Timer.periodic(const Duration(minutes: 10), (_) => _checkLicense());
+    // Look for a newer version a few seconds after opening (optional update).
+    Future.delayed(const Duration(seconds: 3), _checkUpdate);
+  }
+
+  Future<void> _checkUpdate() async {
+    if (UpdateService.askedThisSession) return;
+    UpdateService.askedThisSession = true;
+    final info = await UpdateService.check();
+    if (info == null || !mounted) return;
+    if (PlayerService.instance.fullscreen.value) return; // don't interrupt full-screen TV
+    await showUpdateDialog(context, info);
   }
 
   @override
