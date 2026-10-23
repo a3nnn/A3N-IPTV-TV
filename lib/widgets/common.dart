@@ -1,0 +1,380 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+
+import '../config.dart';
+import '../utils.dart';
+
+/// "Made by A3N" — shown top-left on every screen.
+class SignatureBadge extends StatelessWidget {
+  const SignatureBadge({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: fade(AppConfig.primary, 0.10),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: fade(AppConfig.primary, 0.55)),
+      ),
+      child: const Text(
+        AppConfig.signature,
+        style: TextStyle(
+          color: AppConfig.primary,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 1.1,
+        ),
+      ),
+    );
+  }
+}
+
+class NetImage extends StatelessWidget {
+  final String url;
+  final BoxFit fit;
+  final IconData fallbackIcon;
+  final int? cacheWidth;
+
+  const NetImage({
+    super.key,
+    required this.url,
+    this.fit = BoxFit.cover,
+    this.fallbackIcon = Icons.image_not_supported_outlined,
+    this.cacheWidth,
+  });
+
+  Widget _fallback() => Center(
+        child: Icon(fallbackIcon, color: fade(AppConfig.textSecondary, 0.6), size: 22),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    if (url.isEmpty || !url.startsWith('http')) return _fallback();
+    return Image.network(
+      url,
+      fit: fit,
+      cacheWidth: cacheWidth,
+      gaplessPlayback: true,
+      filterQuality: FilterQuality.medium,
+      errorBuilder: (_, __, ___) => _fallback(),
+    );
+  }
+}
+
+class ChannelLogo extends StatelessWidget {
+  final String url;
+  final double size;
+  const ChannelLogo({super.key, required this.url, this.size = 40});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: AppConfig.surfaceHigh,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: NetImage(url: url, fit: BoxFit.contain, fallbackIcon: Icons.tv_rounded, cacheWidth: 120),
+    );
+  }
+}
+
+class SelectableRow extends StatefulWidget {
+  final bool selected;
+  final VoidCallback onTap;
+  final Widget? leading;
+  final String title;
+  final String? subtitle;
+  final Widget? trailing;
+  final double height;
+  final FocusNode? focusNode;
+  final bool autofocus;
+
+  const SelectableRow({
+    super.key,
+    required this.selected,
+    required this.onTap,
+    required this.title,
+    this.leading,
+    this.subtitle,
+    this.trailing,
+    this.height = 48,
+    this.focusNode,
+    this.autofocus = false,
+  });
+
+  @override
+  State<SelectableRow> createState() => _SelectableRowState();
+}
+
+class _SelectableRowState extends State<SelectableRow> {
+  bool _focused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = widget.selected;
+    final edge = _focused ? AppConfig.textPrimary : (selected ? AppConfig.primary : Colors.transparent);
+    return Material(
+      color: _focused
+          ? fade(AppConfig.primary, 0.28)
+          : (selected ? fade(AppConfig.primary, 0.14) : Colors.transparent),
+      child: InkWell(
+        onTap: widget.onTap,
+        focusNode: widget.focusNode,
+        autofocus: widget.autofocus,
+        onFocusChange: (f) => setState(() => _focused = f),
+        focusColor: Colors.transparent,
+        hoverColor: fade(AppConfig.textPrimary, 0.05),
+        child: Container(
+          height: widget.height,
+          padding: const EdgeInsets.only(left: 12, right: 6),
+          decoration: BoxDecoration(
+            border: Border(left: BorderSide(color: edge, width: 3)),
+          ),
+          child: Row(
+            children: [
+              if (widget.leading != null) widget.leading!,
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: selected || _focused ? AppConfig.textPrimary : fade(AppConfig.textPrimary, 0.88),
+                        fontWeight: selected || _focused ? FontWeight.w600 : FontWeight.w400,
+                      ),
+                    ),
+                    if (widget.subtitle != null && widget.subtitle!.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          widget.subtitle!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12, color: AppConfig.primary),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              if (widget.trailing != null) widget.trailing!,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class CountLabel extends StatelessWidget {
+  final int count;
+  const CountLabel(this.count, {super.key});
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(right: 8),
+        child: Text('$count', style: const TextStyle(fontSize: 12, color: AppConfig.textSecondary)),
+      );
+}
+
+class RoundIconButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+  final double size;
+  const RoundIconButton({super.key, required this.icon, required this.tooltip, required this.onTap, this.size = 40});
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: fade(Colors.black, 0.55),
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onTap,
+          child: SizedBox(
+            width: size,
+            height: size,
+            child: Icon(icon, color: Colors.white, size: size * 0.55),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class ErrorView extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+  const ErrorView({super.key, required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.wifi_off_rounded, size: 46, color: AppConfig.textSecondary),
+          const SizedBox(height: 12),
+          Text(message, textAlign: TextAlign.center, style: const TextStyle(color: AppConfig.textSecondary)),
+          const SizedBox(height: 16),
+          FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh), label: const Text('Retry')),
+        ],
+      ),
+    );
+  }
+}
+
+class SearchField extends StatelessWidget {
+  final String hint;
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  const SearchField({super.key, required this.hint, required this.controller, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      onChanged: onChanged,
+      style: const TextStyle(fontSize: 14),
+      decoration: InputDecoration(
+        hintText: hint,
+        isDense: true,
+        prefixIcon: const Icon(Icons.search_rounded, size: 20),
+        suffixIcon: controller.text.isEmpty
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.close_rounded, size: 18),
+                onPressed: () {
+                  controller.clear();
+                  onChanged('');
+                },
+              ),
+      ),
+    );
+  }
+}
+
+class ClockText extends StatefulWidget {
+  const ClockText({super.key});
+  @override
+  State<ClockText> createState() => _ClockTextState();
+}
+
+class _ClockTextState extends State<ClockText> {
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Text(
+        fmtTime(DateTime.now()),
+        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppConfig.textPrimary),
+      );
+}
+
+/// Search for the TV: a focusable button that opens the on-screen keyboard in
+/// a dialog, so moving through the list with the remote never pops a keyboard.
+class TvSearchButton extends StatefulWidget {
+  final String hint;
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  const TvSearchButton({super.key, required this.hint, required this.controller, required this.onChanged});
+
+  @override
+  State<TvSearchButton> createState() => _TvSearchButtonState();
+}
+
+class _TvSearchButtonState extends State<TvSearchButton> {
+  bool _focused = false;
+
+  Future<void> _open() async {
+    final temp = TextEditingController(text: widget.controller.text);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppConfig.surface,
+        title: Text(widget.hint),
+        content: SizedBox(
+          width: 420,
+          child: TextField(
+            controller: temp,
+            autofocus: true,
+            textInputAction: TextInputAction.search,
+            onSubmitted: (v) => Navigator.pop(ctx, v),
+            decoration: const InputDecoration(prefixIcon: Icon(Icons.search_rounded)),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, ''), child: const Text('Clear')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, temp.text), child: const Text('Search')),
+        ],
+      ),
+    );
+    if (result == null) return;
+    widget.controller.text = result.trim();
+    widget.onChanged(result.trim());
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final q = widget.controller.text;
+    return Material(
+      color: _focused ? fade(AppConfig.primary, 0.28) : AppConfig.surfaceHigh,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        focusColor: Colors.transparent,
+        onFocusChange: (f) => setState(() => _focused = f),
+        onTap: _open,
+        child: Container(
+          height: 46,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: _focused ? AppConfig.textPrimary : Colors.transparent, width: 2),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.search_rounded, size: 20, color: AppConfig.textSecondary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  q.isEmpty ? widget.hint : q,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: q.isEmpty ? AppConfig.textSecondary : AppConfig.textPrimary),
+                ),
+              ),
+              if (q.isNotEmpty) const Icon(Icons.filter_alt_rounded, size: 18, color: AppConfig.primary),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
