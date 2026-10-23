@@ -79,7 +79,7 @@ class ChannelLogo extends StatelessWidget {
         color: AppConfig.surfaceHigh,
         borderRadius: BorderRadius.circular(8),
       ),
-      child: NetImage(url: url, fit: BoxFit.contain, fallbackIcon: Icons.tv_rounded, cacheWidth: 120),
+      child: NetImage(url: url, fit: BoxFit.contain, fallbackIcon: Icons.tv_rounded, cacheWidth: (size * 2).round()),
     );
   }
 }

@@ -50,6 +50,9 @@ class _LiveSectionState extends State<LiveSection> {
   bool _epgLoading = false;
 
   Timer? _ticker;
+  Timer? _zapTimer;
+  final ValueNotifier<int> _clock = ValueNotifier<int>(0);
+  int _favCount = 0;
   Timer? _overlayTimer;
   bool _overlay = true;
 
@@ -59,15 +62,16 @@ class _LiveSectionState extends State<LiveSection> {
   void initState() {
     super.initState();
     _favorites = Storage.favorites;
-    _ticker = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (mounted) setState(() {});
-    });
+    // Only the program-guide parts listen to this, not the whole screen.
+    _ticker = Timer.periodic(const Duration(seconds: 30), (_) => _clock.value++);
     _load();
   }
 
   @override
   void dispose() {
     _ticker?.cancel();
+    _zapTimer?.cancel();
+    _clock.dispose();
     _overlayTimer?.cancel();
     _channelScroll.dispose();
     _searchCtrl.dispose();
@@ -96,6 +100,7 @@ class _LiveSectionState extends State<LiveSection> {
         _categories = cats;
         _all = chans;
         _counts = counts;
+        _favCount = chans.where((c) => _favorites.contains(c.id)).length;
         _loading = false;
       });
       _restoreLast();
@@ -155,18 +160,30 @@ class _LiveSectionState extends State<LiveSection> {
     if (_channelScroll.hasClients) _channelScroll.jumpTo(0);
   }
 
-  Future<void> _select(LiveChannel ch, {bool scroll = false, bool play = true}) async {
+  /// [delay] > 0 is used while zapping: the name/logo change at once, the
+  /// stream only opens when the user stops on a channel.
+  Future<void> _select(LiveChannel ch,
+      {bool scroll = false, bool play = true, Duration delay = Duration.zero}) async {
     setState(() {
       _current = ch;
       _epg = [];
       _epgLoading = true;
     });
+    if (scroll) WidgetsBinding.instance.addPostFrameCallback((_) => _scrollTo(ch));
+    _showOverlay();
+    _zapTimer?.cancel();
+    if (delay > Duration.zero) {
+      _zapTimer = Timer(delay, () => _start(ch, play));
+    } else {
+      await _start(ch, play);
+    }
+  }
+
+  Future<void> _start(LiveChannel ch, bool play) async {
+    if (!mounted || _current?.id != ch.id) return;
     Storage.setLastChannel(ch.id);
     Storage.setLastCategory(_categoryId);
     if (play) _svc.play(Session.api!.liveUrl(ch));
-    if (scroll) WidgetsBinding.instance.addPostFrameCallback((_) => _scrollTo(ch));
-    _showOverlay();
-
     try {
       final epg = await Session.api!.shortEpg(ch.id);
       if (!mounted || _current?.id != ch.id) return;
@@ -192,12 +209,17 @@ class _LiveSectionState extends State<LiveSection> {
     var i = _current == null ? -1 : _visible.indexWhere((c) => c.id == _current!.id);
     i = (i + delta) % _visible.length;
     if (i < 0) i += _visible.length;
-    _select(_visible[i], scroll: true);
+    _select(_visible[i], scroll: true, delay: const Duration(milliseconds: 450));
   }
 
   void _toggleFavorite(LiveChannel c) {
     setState(() {
-      if (!_favorites.remove(c.id)) _favorites.add(c.id);
+      if (_favorites.remove(c.id)) {
+        _favCount--;
+      } else {
+        _favorites.add(c.id);
+        _favCount++;
+      }
       if (_categoryId == _favId) _applyFilter();
     });
     Storage.setFavorites(_favorites);
@@ -289,11 +311,11 @@ class _LiveSectionState extends State<LiveSection> {
                 final w = box.maxWidth;
                 return Row(
                   children: [
-                    SizedBox(width: (w * 0.24).clamp(180.0, 250.0), child: _buildCategories()),
+                    SizedBox(width: (w * 0.24).clamp(180.0, 250.0), child: RepaintBoundary(child: _buildCategories())),
                     const VerticalDivider(width: 1),
-                    SizedBox(width: (w * 0.38).clamp(260.0, 390.0), child: _buildChannels()),
+                    SizedBox(width: (w * 0.38).clamp(260.0, 390.0), child: RepaintBoundary(child: _buildChannels())),
                     const VerticalDivider(width: 1),
-                    Expanded(child: _buildPreview()),
+                    Expanded(child: RepaintBoundary(child: _buildPreview())),
                   ],
                 );
               },
@@ -304,7 +326,7 @@ class _LiveSectionState extends State<LiveSection> {
   Widget _video() => Video(key: _videoKey, controller: _svc.controller, controls: NoVideoControls, fill: Colors.black);
 
   Widget _buildCategories() {
-    final favCount = _all.where((c) => _favorites.contains(c.id)).length;
+    final favCount = _favCount;
     return CategoryPanel(
       section: 'live',
       autofocusSelected: _current == null,
@@ -350,6 +372,7 @@ class _LiveSectionState extends State<LiveSection> {
                   child: ListView.builder(
                     controller: _channelScroll,
                     itemExtent: _rowHeight,
+                    cacheExtent: _rowHeight * 8,
                     itemCount: _visible.length,
                     itemBuilder: (context, i) => _channelRow(_visible[i], i),
                   ),
@@ -455,7 +478,12 @@ class _LiveSectionState extends State<LiveSection> {
                   ],
                 ),
                 const SizedBox(height: 14),
-                Expanded(child: _buildEpg()),
+                Expanded(
+                  child: ValueListenableBuilder<int>(
+                    valueListenable: _clock,
+                    builder: (_, __, ___) => _buildEpg(),
+                  ),
+                ),
               ],
             ],
           );

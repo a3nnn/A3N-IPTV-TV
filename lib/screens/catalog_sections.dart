@@ -156,6 +156,7 @@ class _CatalogSectionState extends State<CatalogSection> {
       setState(() {
         _data = data;
         _counts = counts;
+        _refreshFavs();
         _loading = false;
         _applyFilter();
       });
@@ -168,13 +169,25 @@ class _CatalogSectionState extends State<CatalogSection> {
     }
   }
 
-  Set<int> get _favs => widget.favKey == 'fav_movies' ? Storage.favMovies : Storage.favSeries;
+  // Read once and kept in memory (re-reading it per item was very slow).
+  late Set<int> _favs = _readFavs();
+  int _favCount = 0;
+
+  Set<int> _readFavs() => widget.favKey == 'fav_movies' ? Storage.favMovies : Storage.favSeries;
+
+  void _refreshFavs() {
+    _favs = _readFavs();
+    _favCount = _data.items.where((i) => _favs.contains(i.id)).length;
+  }
 
   Future<void> _open(CatalogItem item) async {
     await item.onOpen(context);
-    // Favorites may have changed on the detail screen.
-    if (mounted && _categoryId == _favId) setState(_applyFilter);
-    if (mounted) setState(() {});
+    // Favorites may have changed on the series screen.
+    if (!mounted) return;
+    setState(() {
+      _refreshFavs();
+      if (_categoryId == _favId) _applyFilter();
+    });
   }
 
   Future<void> _toggleFav(CatalogItem item) async {
@@ -182,6 +195,7 @@ class _CatalogSectionState extends State<CatalogSection> {
     if (!mounted) return;
     showToast(context, added ? '★  ${item.title} added to favorites' : '${item.title} removed from favorites');
     setState(() {
+      _refreshFavs();
       if (_categoryId == _favId) _applyFilter();
     });
   }
@@ -227,7 +241,7 @@ class _CatalogSectionState extends State<CatalogSection> {
               CategoryEntry(
                   id: _favId,
                   name: 'Favorites',
-                  count: _data.items.where((i) => _favs.contains(i.id)).length,
+                  count: _favCount,
                   fixed: true,
                   icon: Icons.star_rounded,
                   iconColor: AppConfig.accent),
@@ -268,6 +282,7 @@ class _CatalogSectionState extends State<CatalogSection> {
                         child: GridView.builder(
                           controller: _gridScroll,
                           padding: const EdgeInsets.all(20),
+                          cacheExtent: 500,
                           gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                             maxCrossAxisExtent: 180,
                             mainAxisSpacing: 18,

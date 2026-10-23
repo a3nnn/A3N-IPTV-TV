@@ -44,7 +44,30 @@ class A3NApp extends StatelessWidget {
         const SingleActivator(LogicalKeyboardKey.numpadEnter): const ActivateIntent(),
         const SingleActivator(LogicalKeyboardKey.gameButtonA): const ActivateIntent(),
       },
+      // Remote navigation: the focused row glides to the middle of the list.
+      builder: (context, child) => FocusTraversalGroup(
+        policy: ReadingOrderTraversalPolicy(requestFocusCallback: _smoothFocus),
+        child: child!,
+      ),
       home: const StartGate(),
     );
   }
+}
+
+void _smoothFocus(
+  FocusNode node, {
+  ScrollPositionAlignmentPolicy? alignmentPolicy,
+  double? alignment,
+  Duration? duration,
+  Curve? curve,
+}) {
+  node.requestFocus();
+  final ctx = node.context;
+  if (ctx == null) return;
+  Scrollable.ensureVisible(
+    ctx,
+    alignment: 0.5,
+    duration: const Duration(milliseconds: 140),
+    curve: Curves.easeOutCubic,
+  );
 }

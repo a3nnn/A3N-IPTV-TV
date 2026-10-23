@@ -65,19 +65,40 @@ class _CategoryPanelState extends State<CategoryPanel> {
     final pinned = [for (final id in _pinned) if (byId.containsKey(id)) byId[id]!];
     final rest = widget.entries.where((e) => !e.fixed && !_pinned.contains(e.id)).toList();
 
-    final rows = <Widget>[
-      for (final e in fixed) _row(e, pinned: false),
-      if (pinned.isNotEmpty) _label('PINNED'),
-      for (final e in pinned) _row(e, pinned: true),
-      if (pinned.isNotEmpty && rest.isNotEmpty) const Divider(height: 9, indent: 12, endIndent: 12),
-      for (final e in rest) _row(e, pinned: false),
+    // Only the rows on screen are built (there can be hundreds of categories).
+    final items = <Object>[
+      for (final e in fixed) (e, false),
+      if (pinned.isNotEmpty) 'PINNED',
+      for (final e in pinned) (e, true),
+      if (pinned.isNotEmpty && rest.isNotEmpty) 'DIVIDER',
+      for (final e in rest) (e, false),
     ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _label('CATEGORIES', top: 16),
-        Expanded(child: ListView(children: rows)),
+        Expanded(
+          child: ListView.builder(
+            itemCount: items.length,
+            cacheExtent: 48 * 6,
+            findChildIndexCallback: (key) {
+              if (key is ValueKey<String> && key.value.startsWith('cat-')) {
+                final id = key.value.substring(4);
+                final i = items.indexWhere((it) => it is (CategoryEntry, bool) && it.$1.id == id);
+                return i < 0 ? null : i;
+              }
+              return null;
+            },
+            itemBuilder: (context, i) {
+              final it = items[i];
+              if (it == 'PINNED') return _label('PINNED');
+              if (it == 'DIVIDER') return const Divider(height: 9, indent: 12, endIndent: 12);
+              final (e, isPinned) = it as (CategoryEntry, bool);
+              return _row(e, pinned: isPinned);
+            },
+          ),
+        ),
       ],
     );
   }

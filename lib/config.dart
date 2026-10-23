@@ -12,7 +12,7 @@ class AppConfig {
   // ---------- الهوية ----------
   static const String appName = 'A3N IPTV Player';
   static const String signature = 'Made by A3N';
-  static const String version = '1.0.3';
+  static const String version = '1.0.4';
 
   // ---------- مراقبة الأجهزة والإيقاف (Supabase) ----------
   // من Supabase: Project Settings > API Keys
