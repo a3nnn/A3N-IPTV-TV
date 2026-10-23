@@ -32,8 +32,8 @@ class _LiveSectionState extends State<LiveSection> {
   // Keeps ONE video surface alive when moving between preview and full screen
   // (re-creating it is what caused the freeze when enlarging).
   final GlobalKey _videoKey = GlobalKey();
-  // Focus of the playing channel, so the remote lands back on it.
-  final FocusNode _currentChannelFocus = FocusNode();
+  // Bumped when leaving full screen so the playing channel's row takes focus again.
+  int _refocusTick = 0;
 
   bool _loading = true;
   String? _error;
@@ -72,7 +72,6 @@ class _LiveSectionState extends State<LiveSection> {
     _channelScroll.dispose();
     _searchCtrl.dispose();
     _fsFocus.dispose();
-    _currentChannelFocus.dispose();
     super.dispose();
   }
 
@@ -232,9 +231,7 @@ class _LiveSectionState extends State<LiveSection> {
     } else {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_current != null) _scrollTo(_current!);
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && _currentChannelFocus.context != null) _currentChannelFocus.requestFocus();
-        });
+        if (mounted) setState(() => _refocusTick++);
       });
     }
   }
@@ -366,10 +363,11 @@ class _LiveSectionState extends State<LiveSection> {
     final selected = c.id == _current?.id;
     final fav = _favorites.contains(c.id);
     return SelectableRow(
+      key: ValueKey('ch-${c.id}'),
       height: _rowHeight,
       selected: selected,
-      focusNode: selected ? _currentChannelFocus : null,
       autofocus: selected,
+      refocusTick: selected ? _refocusTick : null,
       onTap: () {
         if (!Storage.previewEnabled) {
           // Light mode: no preview, open the channel full screen right away.
@@ -385,10 +383,12 @@ class _LiveSectionState extends State<LiveSection> {
         children: [
           SizedBox(
             width: 40,
-            child: Text(
-              '${c.number > 0 ? c.number : index + 1}',
-              style: const TextStyle(fontSize: 12, color: AppConfig.textSecondary),
-            ),
+            child: selected
+                ? const Icon(Icons.play_arrow_rounded, size: 22, color: AppConfig.primary)
+                : Text(
+                    '${c.number > 0 ? c.number : index + 1}',
+                    style: const TextStyle(fontSize: 12, color: AppConfig.textSecondary),
+                  ),
           ),
           ChannelLogo(url: c.logo, size: 40),
           const SizedBox(width: 12),

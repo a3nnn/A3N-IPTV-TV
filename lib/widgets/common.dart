@@ -92,9 +92,11 @@ class SelectableRow extends StatefulWidget {
   final String? subtitle;
   final Widget? trailing;
   final double height;
-  final FocusNode? focusNode;
   final bool autofocus;
   final VoidCallback? onLongPress;
+
+  /// Change this number to pull the remote's focus back onto this row.
+  final int? refocusTick;
 
   const SelectableRow({
     super.key,
@@ -105,9 +107,9 @@ class SelectableRow extends StatefulWidget {
     this.subtitle,
     this.trailing,
     this.height = 48,
-    this.focusNode,
     this.autofocus = false,
     this.onLongPress,
+    this.refocusTick,
   });
 
   @override
@@ -115,7 +117,26 @@ class SelectableRow extends StatefulWidget {
 }
 
 class _SelectableRowState extends State<SelectableRow> {
+  // Each row owns its focus node for its whole life, so the focus never jumps
+  // to another row when the playing channel changes.
+  final FocusNode _node = FocusNode();
   bool _focused = false;
+
+  @override
+  void didUpdateWidget(covariant SelectableRow old) {
+    super.didUpdateWidget(old);
+    if (widget.refocusTick != null && widget.refocusTick != old.refocusTick) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _node.requestFocus();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _node.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -126,12 +147,12 @@ class _SelectableRowState extends State<SelectableRow> {
       onLongPress: widget.onLongPress,
       child: Material(
       color: _focused
-          ? fade(AppConfig.primary, 0.28)
-          : (selected ? fade(AppConfig.primary, 0.14) : Colors.transparent),
+          ? fade(AppConfig.primary, 0.34)
+          : (selected ? fade(AppConfig.primary, 0.08) : Colors.transparent),
       child: InkWell(
         onTap: widget.onTap,
         onLongPress: widget.onLongPress,
-        focusNode: widget.focusNode,
+        focusNode: _node,
         autofocus: widget.autofocus,
         onFocusChange: (f) => setState(() => _focused = f),
         focusColor: Colors.transparent,
