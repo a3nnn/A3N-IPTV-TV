@@ -1,0 +1,74 @@
+name: Build Android TV release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Version from tag
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          [[ "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || V="0.0.0"
+          echo "APP_VERSION=$V" >> "$GITHUB_ENV"
+
+      - name: Create Android TV project
+        run: |
+          flutter create --platforms=android --org com.a3n --project-name a3n_iptv_tv .
+          python3 ci/patch_android.py
+
+      - name: Build APK
+        run: |
+          flutter pub get
+          flutter build apk --release \
+            --target-platform android-arm,android-arm64 \
+            --build-name="$APP_VERSION" --build-number="${{ github.run_number }}"
+
+      - name: Sign APK
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KS_B64" ] || [ -z "$KS_PASS" ]; then
+            echo "::error::Add the ANDROID_KEYSTORE_BASE64 and ANDROID_KEYSTORE_PASSWORD secrets first."
+            exit 1
+          fi
+          echo "$KS_B64" | base64 -d > a3n.jks
+          BT=$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)
+          "$ANDROID_HOME/build-tools/$BT/apksigner" sign \
+            --ks a3n.jks --ks-key-alias a3n \
+            --ks-pass env:KS_PASS --key-pass env:KS_PASS \
+            --out A3N_IPTV_Player.apk build/app/outputs/flutter-apk/app-release.apk
+          "$ANDROID_HOME/build-tools/$BT/apksigner" verify A3N_IPTV_Player.apk
+          rm a3n.jks
+          ls -la A3N_IPTV_Player.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: A3N_IPTV_Player_APK
+          path: A3N_IPTV_Player.apk
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: A3N IPTV Player TV ${{ env.APP_VERSION }}
+          files: A3N_IPTV_Player.apk
