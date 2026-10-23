@@ -79,7 +79,8 @@ class _CategoryPanelState extends State<CategoryPanel> {
       children: [
         _label('CATEGORIES', top: 16),
         Expanded(
-          child: ListView.builder(
+          child: StayInList(
+            child: ListView.builder(
             itemCount: items.length,
             cacheExtent: 48 * 6,
             findChildIndexCallback: (key) {
@@ -97,6 +98,7 @@ class _CategoryPanelState extends State<CategoryPanel> {
               final (e, isPinned) = it as (CategoryEntry, bool);
               return _row(e, pinned: isPinned);
             },
+          ),
           ),
         ),
       ],

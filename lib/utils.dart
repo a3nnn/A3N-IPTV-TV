@@ -36,3 +36,12 @@ String two(int n) => n.toString().padLeft(2, '0');
 String fmtTime(DateTime d) => '${two(d.hour)}:${two(d.minute)}';
 
 String fmtDate(DateTime d) => '${d.year}-${two(d.month)}-${two(d.day)}';
+
+/// For search: lower case, and the Arabic letter variants treated as one
+/// (أ إ آ → ا, ى → ي, ة → ه), without tashkeel.
+String searchNorm(String s) {
+  var t = s.toLowerCase();
+  t = t.replaceAll(RegExp('[ً-ْـ]'), '');
+  t = t.replaceAll(RegExp('[أإآٱ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه');
+  return t;
+}

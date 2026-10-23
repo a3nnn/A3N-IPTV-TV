@@ -163,11 +163,13 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
                     ),
                     const Divider(height: 1),
                     Expanded(
-                      child: ListView.separated(
+                      child: StayInList(
+                        child: ListView.separated(
                         padding: const EdgeInsets.symmetric(vertical: 8),
                         itemCount: episodes.length,
                         separatorBuilder: (_, __) => const Divider(height: 1, indent: 24, endIndent: 24),
                         itemBuilder: (context, i) => _EpisodeTile(episode: episodes[i], autofocus: i == 0, onTap: () => _play(episodes[i])),
+                      ),
                       ),
                     ),
                   ],

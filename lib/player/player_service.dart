@@ -51,6 +51,9 @@ class PlayerService {
   /// Bumped to ask the live screen to leave full screen (Android BACK fallback).
   final ValueNotifier<int> exitFullscreen = ValueNotifier<int>(0);
 
+  /// Bumped every time a new stream is opened (shows the quality badge).
+  final ValueNotifier<int> opened = ValueNotifier<int>(0);
+
   String? _currentUrl;
 
   Future<void> _tune() async {
@@ -63,6 +66,9 @@ class PlayerService {
       'framedrop': 'vo',
       'video-sync': 'audio',
       'network-timeout': '20',
+      // Jump to the nearest keyframe when seeking: much lighter for the TV's
+      // video chip than an exact seek (exact seeks could crash some TVs).
+      'hr-seek': 'no',
     };
     for (final e in props.entries) {
       try {
@@ -74,7 +80,18 @@ class PlayerService {
   Future<void> play(String url) async {
     if (_currentUrl == url) return;
     _currentUrl = url;
+    opened.value++;
     await player.open(Media(url, httpHeaders: const {'User-Agent': AppConfig.userAgent}));
+  }
+
+  /// Reads an mpv property, '' if it isn't available.
+  Future<String> property(String name) async {
+    try {
+      final v = await (player.platform as dynamic).getProperty(name);
+      return v?.toString() ?? '';
+    } catch (_) {
+      return '';
+    }
   }
 
   Future<void> stop() async {

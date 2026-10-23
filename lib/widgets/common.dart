@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 
 import '../config.dart';
 import '../utils.dart';
+import 'tv_keyboard.dart';
+
 
 /// "Made by A3N" — shown top-left on every screen.
 class SignatureBadge extends StatelessWidget {
@@ -341,31 +343,24 @@ class _TvSearchButtonState extends State<TvSearchButton> {
   bool _focused = false;
 
   Future<void> _open() async {
-    final temp = TextEditingController(text: widget.controller.text);
+    final before = widget.controller.text;
+    var latest = before;
     final result = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppConfig.surface,
-        title: Text(widget.hint),
-        content: SizedBox(
-          width: 420,
-          child: TextField(
-            controller: temp,
-            autofocus: true,
-            textInputAction: TextInputAction.search,
-            onSubmitted: (v) => Navigator.pop(ctx, v),
-            decoration: const InputDecoration(prefixIcon: Icon(Icons.search_rounded)),
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, ''), child: const Text('Clear')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, temp.text), child: const Text('Search')),
-        ],
+      builder: (ctx) => TvKeyboardDialog(
+        title: widget.hint,
+        initial: before,
+        // Results update behind the dialog while typing.
+        onChanged: (v) {
+          latest = v;
+          widget.onChanged(v.trim());
+        },
       ),
     );
-    if (result == null) return;
-    widget.controller.text = result.trim();
-    widget.onChanged(result.trim());
+    // BACK keeps what was typed; Search / Clear return it.
+    final text = (result ?? latest).trim();
+    widget.controller.text = text;
+    widget.onChanged(text);
     if (mounted) setState(() {});
   }
 
@@ -509,4 +504,37 @@ void showToast(BuildContext context, String text) {
   if (m == null) return;
   m.hideCurrentSnackBar();
   m.showSnackBar(SnackBar(content: Text(text), duration: const Duration(milliseconds: 1600)));
+}
+
+/// Keeps the remote's focus inside a list / grid: pressing ▼ on the last item
+/// does nothing instead of jumping to another panel.
+class StayInList extends StatelessWidget {
+  final Widget child;
+  const StayInList({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) => Focus(
+        canRequestFocus: false,
+        skipTraversal: true,
+        onKeyEvent: (node, e) {
+          if (e.logicalKey != LogicalKeyboardKey.arrowDown) return KeyEventResult.ignored;
+          if (e is! KeyDownEvent && e is! KeyRepeatEvent) return KeyEventResult.ignored;
+          final cur = FocusManager.instance.primaryFocus;
+          final ctx = cur?.context;
+          if (cur == null || ctx == null) return KeyEventResult.ignored;
+          try {
+            final r = cur.rect;
+            // Another item further down (already built)? Then move normally.
+            final below = node.traversalDescendants.any((d) => d != cur && d.canRequestFocus && d.rect.top >= r.bottom - 2);
+            if (below) return KeyEventResult.ignored;
+            // More items still to come when scrolling? Then move normally.
+            final pos = Scrollable.maybeOf(ctx)?.position;
+            if (pos != null && pos.pixels < pos.maxScrollExtent - 1) return KeyEventResult.ignored;
+          } catch (_) {
+            return KeyEventResult.ignored;
+          }
+          return KeyEventResult.handled; // last item: stay here
+        },
+        child: child,
+      );
 }

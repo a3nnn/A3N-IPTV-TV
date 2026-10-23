@@ -210,8 +210,8 @@ class _CatalogSectionState extends State<CatalogSection> {
     } else {
       list = _data.items.where((i) => i.categoryId == _categoryId);
     }
-    final q = _query.trim().toLowerCase();
-    if (q.isNotEmpty) list = list.where((i) => i.title.toLowerCase().contains(q));
+    final q = searchNorm(_query.trim());
+    if (q.isNotEmpty) list = list.where((i) => searchNorm(i.title).contains(q));
     _visible = list.toList();
   }
 
@@ -279,7 +279,8 @@ class _CatalogSectionState extends State<CatalogSection> {
                       )
                     : Scrollbar(
                         controller: _gridScroll,
-                        child: GridView.builder(
+                        child: StayInList(
+                          child: GridView.builder(
                           controller: _gridScroll,
                           padding: const EdgeInsets.all(20),
                           cacheExtent: 500,
@@ -299,6 +300,7 @@ class _CatalogSectionState extends State<CatalogSection> {
                               onLongPress: () => _toggleFav(item),
                             );
                           },
+                        ),
                         ),
                       ),
               ),

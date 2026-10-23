@@ -9,6 +9,7 @@ import '../config.dart';
 import '../player/player_service.dart';
 import '../utils.dart';
 import '../widgets/common.dart';
+import '../widgets/stream_info.dart';
 
 /// Full-screen player for movies and episodes, driven by the TV remote:
 /// OK = play / pause, ◀ ▶ = seek 10 s (hold to go faster), BACK = close.
@@ -28,6 +29,11 @@ class _PlayerPageState extends State<PlayerPage> {
   bool _overlay = true;
   int _repeat = 0;
 
+  // Seeking: while ◀ ▶ are pressed only the bar moves; the player jumps ONCE
+  // shortly after the button is let go (many seeks in a row crashed some TVs).
+  Duration? _seekTarget;
+  Timer? _seekTimer;
+
   @override
   void initState() {
     super.initState();
@@ -38,6 +44,7 @@ class _PlayerPageState extends State<PlayerPage> {
   @override
   void dispose() {
     _hideTimer?.cancel();
+    _seekTimer?.cancel();
     _focus.dispose();
     _svc.stop();
     super.dispose();
@@ -54,15 +61,29 @@ class _PlayerPageState extends State<PlayerPage> {
   void _seek(int direction, {bool repeat = false}) {
     final p = _svc.player;
     final dur = p.state.duration;
-    if (dur == Duration.zero) return;
+    if (dur <= Duration.zero) return; // not loaded yet
     _repeat = repeat ? _repeat + 1 : 0;
     // Holding the button speeds up: 10 s, then 30 s, then 60 s steps.
     final step = _repeat > 12 ? 60 : (_repeat > 4 ? 30 : 10);
-    var target = p.state.position + Duration(seconds: step * direction);
+    var target = (_seekTarget ?? p.state.position) + Duration(seconds: step * direction);
     if (target < Duration.zero) target = Duration.zero;
-    if (target > dur) target = dur;
-    p.seek(target);
+    if (target > dur - const Duration(seconds: 2)) target = dur - const Duration(seconds: 2);
+    if (target < Duration.zero) target = Duration.zero;
+    setState(() => _seekTarget = target);
     _poke();
+    _seekTimer?.cancel();
+    _seekTimer = Timer(const Duration(milliseconds: 600), _commitSeek);
+  }
+
+  Future<void> _commitSeek() async {
+    final t = _seekTarget;
+    if (t == null || !mounted) return;
+    try {
+      await _svc.player.seek(t);
+    } catch (_) {}
+    // Keep showing the target until the player reports the new position.
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    if (mounted && _seekTimer?.isActive != true) setState(() => _seekTarget = null);
   }
 
   KeyEventResult _onKey(FocusNode node, KeyEvent e) {
@@ -161,6 +182,7 @@ class _PlayerPageState extends State<PlayerPage> {
                   padding: const EdgeInsets.fromLTRB(60, 0, 60, 70),
                 ),
               ),
+              const Positioned(top: 76, left: 28, child: StreamInfoBadge()),
               StreamBuilder<bool>(
                 stream: p.stream.buffering,
                 initialData: p.state.buffering,
@@ -225,7 +247,7 @@ class _PlayerPageState extends State<PlayerPage> {
                             stream: p.stream.position,
                             initialData: p.state.position,
                             builder: (context, _) {
-                              final pos = p.state.position;
+                              final pos = _seekTarget ?? p.state.position;
                               final dur = p.state.duration;
                               final v = dur.inMilliseconds > 0
                                   ? (pos.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0)

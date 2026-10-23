@@ -12,6 +12,7 @@ import '../player/player_service.dart';
 import '../utils.dart';
 import '../widgets/category_panel.dart';
 import '../widgets/common.dart';
+import '../widgets/stream_info.dart';
 
 const String _favId = '__fav';
 const String _allId = '__all';
@@ -149,8 +150,8 @@ class _LiveSectionState extends State<LiveSection> {
     } else {
       list = _all.where((c) => c.categoryId == _categoryId);
     }
-    final q = _query.trim().toLowerCase();
-    if (q.isNotEmpty) list = list.where((c) => c.name.toLowerCase().contains(q));
+    final q = searchNorm(_query.trim());
+    if (q.isNotEmpty) list = list.where((c) => searchNorm(c.name).contains(q));
     _visible = list.toList();
   }
 
@@ -373,12 +374,14 @@ class _LiveSectionState extends State<LiveSection> {
                 )
               : Scrollbar(
                   controller: _channelScroll,
-                  child: ListView.builder(
+                  child: StayInList(
+                    child: ListView.builder(
                     controller: _channelScroll,
                     itemExtent: _rowHeight,
                     cacheExtent: _rowHeight * 8,
                     itemCount: _visible.length,
                     itemBuilder: (context, i) => _channelRow(_visible[i], i),
+                  ),
                   ),
                 ),
         ),
@@ -526,6 +529,7 @@ class _LiveSectionState extends State<LiveSection> {
         children: [
           _video(),
           _bufferingIndicator(),
+          const Positioned(top: 10, left: 10, child: StreamInfoBadge(compact: true)),
           Positioned(
             right: 12,
             bottom: 12,
@@ -592,6 +596,7 @@ class _LiveSectionState extends State<LiveSection> {
               const ColoredBox(color: Colors.black),
               _video(),
               _bufferingIndicator(),
+              const Positioned(top: 72, left: 22, child: StreamInfoBadge()),
               AnimatedOpacity(
                 opacity: _overlay ? 1 : 0,
                 duration: const Duration(milliseconds: 250),
