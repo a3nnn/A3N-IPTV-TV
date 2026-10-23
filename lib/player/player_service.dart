@@ -48,6 +48,9 @@ class PlayerService {
   /// True while live TV is shown full screen (hides the menu).
   final ValueNotifier<bool> fullscreen = ValueNotifier<bool>(false);
 
+  /// Bumped to ask the live screen to leave full screen (Android BACK fallback).
+  final ValueNotifier<int> exitFullscreen = ValueNotifier<int>(0);
+
   String? _currentUrl;
 
   Future<void> _tune() async {

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../config.dart';
@@ -65,8 +66,12 @@ class _PlayerPageState extends State<PlayerPage> {
   }
 
   KeyEventResult _onKey(FocusNode node, KeyEvent e) {
-    if (e is! KeyDownEvent && e is! KeyRepeatEvent) return KeyEventResult.ignored;
     final k = e.logicalKey;
+    if (k == LogicalKeyboardKey.escape || k == LogicalKeyboardKey.goBack) {
+      if (e is KeyUpEvent) Navigator.of(context).maybePop();
+      return KeyEventResult.handled;
+    }
+    if (e is! KeyDownEvent && e is! KeyRepeatEvent) return KeyEventResult.ignored;
     final repeat = e is KeyRepeatEvent;
     if (k == LogicalKeyboardKey.arrowLeft || k == LogicalKeyboardKey.mediaRewind) {
       _seek(-1, repeat: repeat);
@@ -95,15 +100,26 @@ class _PlayerPageState extends State<PlayerPage> {
       _poke();
       return KeyEventResult.handled;
     }
-    if (k == LogicalKeyboardKey.arrowUp || k == LogicalKeyboardKey.arrowDown) {
+    if (k == LogicalKeyboardKey.arrowDown ||
+        k == LogicalKeyboardKey.contextMenu ||
+        k == LogicalKeyboardKey.info) {
+      _openTracks();
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.arrowUp) {
       _poke();
       return KeyEventResult.handled;
     }
-    if (k == LogicalKeyboardKey.escape || k == LogicalKeyboardKey.goBack) {
-      Navigator.of(context).maybePop();
-      return KeyEventResult.handled;
-    }
     return KeyEventResult.ignored;
+  }
+
+  /// ▼ on the remote: pick the audio language and the subtitles of the file.
+  Future<void> _openTracks() async {
+    _hideTimer?.cancel();
+    await showDialog<void>(context: context, builder: (_) => _TracksDialog(player: _svc.player));
+    if (!mounted) return;
+    _focus.requestFocus();
+    _poke();
   }
 
   String _fmt(Duration d) {
@@ -130,7 +146,21 @@ class _PlayerPageState extends State<PlayerPage> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              Video(controller: _svc.controller, controls: NoVideoControls, fill: Colors.black),
+              Video(
+                controller: _svc.controller,
+                controls: NoVideoControls,
+                fill: Colors.black,
+                subtitleViewConfiguration: SubtitleViewConfiguration(
+                  style: const TextStyle(
+                    fontSize: 42,
+                    height: 1.35,
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    shadows: [Shadow(blurRadius: 6, color: Colors.black), Shadow(blurRadius: 2, color: Colors.black)],
+                  ),
+                  padding: const EdgeInsets.fromLTRB(60, 0, 60, 70),
+                ),
+              ),
               StreamBuilder<bool>(
                 stream: p.stream.buffering,
                 initialData: p.state.buffering,
@@ -171,7 +201,7 @@ class _PlayerPageState extends State<PlayerPage> {
                               ),
                               const SizedBox(width: 16),
                               Text(
-                                'OK  play/pause     ◀ ▶  seek     BACK  exit',
+                                'OK  play/pause     ◀ ▶  seek     ▼  audio & subtitles     BACK  exit',
                                 style: TextStyle(fontSize: 12, color: fade(Colors.white, 0.6)),
                               ),
                             ],
@@ -239,6 +269,135 @@ class _PlayerPageState extends State<PlayerPage> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+
+// ------------------------------------------------------------ tracks menu
+
+String _trackLabel(String id, String? title, String? language, int index) {
+  final lang = (language ?? '').trim();
+  final name = (title ?? '').trim();
+  final parts = <String>[
+    if (lang.isNotEmpty) lang.toUpperCase(),
+    if (name.isNotEmpty && name.toLowerCase() != lang.toLowerCase()) name,
+  ];
+  return parts.isEmpty ? 'Track ${index + 1}' : parts.join('  ·  ');
+}
+
+class _TracksDialog extends StatefulWidget {
+  final Player player;
+  const _TracksDialog({required this.player});
+
+  @override
+  State<_TracksDialog> createState() => _TracksDialogState();
+}
+
+class _TracksDialogState extends State<_TracksDialog> {
+  @override
+  Widget build(BuildContext context) {
+    final p = widget.player;
+    final tracks = p.state.tracks;
+    final current = p.state.track;
+    final audio = tracks.audio.where((t) => t.id != 'auto' && t.id != 'no').toList();
+    final subs = tracks.subtitle.where((t) => t.id != 'auto' && t.id != 'no').toList();
+
+    Widget option({
+      required String label,
+      required bool selected,
+      required VoidCallback onTap,
+      bool autofocus = false,
+    }) {
+      return ListTile(
+        dense: true,
+        autofocus: autofocus,
+        selected: selected,
+        selectedColor: AppConfig.primary,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        leading: Icon(selected ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded, size: 20),
+        title: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+        onTap: onTap,
+      );
+    }
+
+    Widget column(String title, IconData icon, List<Widget> children) => Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(children: [
+                Icon(icon, size: 18, color: AppConfig.textSecondary),
+                const SizedBox(width: 8),
+                Text(title,
+                    style: const TextStyle(
+                        fontSize: 12, letterSpacing: 1.3, color: AppConfig.textSecondary, fontWeight: FontWeight.w700)),
+              ]),
+              const SizedBox(height: 8),
+              Flexible(child: ListView(shrinkWrap: true, children: children)),
+            ],
+          ),
+        );
+
+    final audioList = <Widget>[
+      if (audio.isEmpty)
+        const Padding(
+          padding: EdgeInsets.all(12),
+          child: Text('Only one audio track', style: TextStyle(color: AppConfig.textSecondary)),
+        ),
+      for (var i = 0; i < audio.length; i++)
+        option(
+          label: _trackLabel(audio[i].id, audio[i].title, audio[i].language, i),
+          selected: current.audio.id == audio[i].id,
+          autofocus: current.audio.id == audio[i].id || (i == 0 && !audio.any((a) => a.id == current.audio.id)),
+          onTap: () {
+            p.setAudioTrack(audio[i]);
+            Navigator.of(context).pop();
+          },
+        ),
+    ];
+
+    final subList = <Widget>[
+      option(
+        label: 'Off',
+        selected: current.subtitle.id == 'no' || !subs.any((s) => s.id == current.subtitle.id),
+        autofocus: audio.isEmpty,
+        onTap: () {
+          p.setSubtitleTrack(SubtitleTrack.no());
+          Navigator.of(context).pop();
+        },
+      ),
+      for (var i = 0; i < subs.length; i++)
+        option(
+          label: _trackLabel(subs[i].id, subs[i].title, subs[i].language, i),
+          selected: current.subtitle.id == subs[i].id,
+          onTap: () {
+            p.setSubtitleTrack(subs[i]);
+            Navigator.of(context).pop();
+          },
+        ),
+      if (subs.isEmpty)
+        const Padding(
+          padding: EdgeInsets.all(12),
+          child: Text('No subtitles in this file', style: TextStyle(color: AppConfig.textSecondary)),
+        ),
+    ];
+
+    return AlertDialog(
+      backgroundColor: AppConfig.surface,
+      contentPadding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+      content: SizedBox(
+        width: 640,
+        height: 340,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            column('AUDIO', Icons.audiotrack_rounded, audioList),
+            const SizedBox(width: 20),
+            column('SUBTITLES', Icons.subtitles_rounded, subList),
+          ],
         ),
       ),
     );

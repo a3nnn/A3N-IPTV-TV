@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../config.dart';
 import '../data/license_service.dart';
@@ -26,6 +27,29 @@ class _HomeScreenState extends State<HomeScreen> {
   // switches between normal and full-window layouts.
   final List<GlobalKey> _keys = List.generate(4, (_) => GlobalKey());
   Timer? _licenseTimer;
+  DateTime? _lastBack;
+
+  /// BACK on the main screen: full screen -> list, other tab -> Live TV,
+  /// and only a second BACK within 2 seconds closes the app.
+  void _onBack(bool didPop, Object? _) {
+    if (didPop) return;
+    final svc = PlayerService.instance;
+    if (svc.fullscreen.value) {
+      svc.exitFullscreen.value++;
+      return;
+    }
+    if (_index != 0) {
+      _go(0);
+      return;
+    }
+    final now = DateTime.now();
+    if (_lastBack != null && now.difference(_lastBack!) < const Duration(seconds: 2)) {
+      SystemNavigator.pop();
+      return;
+    }
+    _lastBack = now;
+    showToast(context, 'Press BACK again to exit');
+  }
 
   @override
   void initState() {
@@ -75,7 +99,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<bool>(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: _onBack,
+      child: ValueListenableBuilder<bool>(
       valueListenable: PlayerService.instance.fullscreen,
       builder: (context, fullscreen, _) {
         final section = KeyedSubtree(key: _keys[_index], child: _section());
@@ -99,6 +126,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         );
       },
+    ),
     );
   }
 }

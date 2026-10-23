@@ -62,6 +62,7 @@ class _LiveSectionState extends State<LiveSection> {
   void initState() {
     super.initState();
     _favorites = Storage.favorites;
+    _svc.exitFullscreen.addListener(_onExitRequest);
     // Only the program-guide parts listen to this, not the whole screen.
     _ticker = Timer.periodic(const Duration(seconds: 30), (_) => _clock.value++);
     _load();
@@ -69,6 +70,7 @@ class _LiveSectionState extends State<LiveSection> {
 
   @override
   void dispose() {
+    _svc.exitFullscreen.removeListener(_onExitRequest);
     _ticker?.cancel();
     _zapTimer?.cancel();
     _clock.dispose();
@@ -258,6 +260,10 @@ class _LiveSectionState extends State<LiveSection> {
     }
   }
 
+  void _onExitRequest() {
+    if (mounted && _fullscreen) _setFullscreen(false);
+  }
+
   void _showOverlay() {
     _overlayTimer?.cancel();
     if (!_overlay && mounted) setState(() => _overlay = true);
@@ -267,12 +273,14 @@ class _LiveSectionState extends State<LiveSection> {
   }
 
   KeyEventResult _onFullscreenKey(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent && event is! KeyRepeatEvent) return KeyEventResult.ignored;
     final k = event.logicalKey;
+    // BACK: swallow the whole press and act when the button is RELEASED.
+    // (Acting on press let Android see the release as a second BACK = app closed.)
     if (k == LogicalKeyboardKey.escape || k == LogicalKeyboardKey.goBack || k == LogicalKeyboardKey.backspace) {
-      _setFullscreen(false);
+      if (event is KeyUpEvent && _fullscreen) _setFullscreen(false);
       return KeyEventResult.handled;
     }
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) return KeyEventResult.ignored;
     if (k == LogicalKeyboardKey.arrowUp || k == LogicalKeyboardKey.channelUp || k == LogicalKeyboardKey.pageUp) {
       _zap(-1);
       return KeyEventResult.handled;
@@ -299,11 +307,7 @@ class _LiveSectionState extends State<LiveSection> {
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null) return ErrorView(message: _error!, onRetry: _load);
     // Remote BACK in full screen returns to the list instead of leaving the app.
-    return PopScope(
-      canPop: !_fullscreen,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && _fullscreen) _setFullscreen(false);
-      },
+    return Container(
       child: _fullscreen
           ? _buildFullscreen()
           : LayoutBuilder(
