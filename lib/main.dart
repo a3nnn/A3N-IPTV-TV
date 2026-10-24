@@ -3,14 +3,18 @@ import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 
 import 'config.dart';
+import 'data/disk_cache.dart';
 import 'data/storage.dart';
 import 'screens/start_gate.dart';
 import 'theme.dart';
+import 'widgets/common.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
   await Storage.init();
+  // Saved posters / lists on the TV (doesn't hold up the start).
+  DiskCache.init();
 
   // Keep decoded logos/posters small in memory (TVs have little RAM).
   PaintingBinding.instance.imageCache
@@ -45,14 +49,21 @@ class A3NApp extends StatelessWidget {
         const SingleActivator(LogicalKeyboardKey.gameButtonA): const ActivateIntent(),
       },
       // Remote navigation: the focused row glides to the middle of the list.
-      builder: (context, child) => FocusTraversalGroup(
-        policy: ReadingOrderTraversalPolicy(requestFocusCallback: _smoothFocus),
-        child: child!,
+      builder: (context, child) => Focus(
+        canRequestFocus: false,
+        skipTraversal: true,
+        onKeyEvent: RemoteLongPress.guard,
+        child: FocusTraversalGroup(
+          policy: ReadingOrderTraversalPolicy(requestFocusCallback: _smoothFocus),
+          child: child!,
+        ),
       ),
       home: const StartGate(),
     );
   }
 }
+
+DateTime _lastFocusMove = DateTime(2000);
 
 void _smoothFocus(
   FocusNode node, {
@@ -64,10 +75,15 @@ void _smoothFocus(
   node.requestFocus();
   final ctx = node.context;
   if (ctx == null) return;
+  // A single press glides; holding the button (fast repeats) jumps straight
+  // there, so the animations don't pile up and lag behind.
+  final now = DateTime.now();
+  final holding = now.difference(_lastFocusMove) < const Duration(milliseconds: 180);
+  _lastFocusMove = now;
   Scrollable.ensureVisible(
     ctx,
     alignment: 0.5,
-    duration: const Duration(milliseconds: 140),
+    duration: holding ? Duration.zero : const Duration(milliseconds: 140),
     curve: Curves.easeOutCubic,
   );
 }

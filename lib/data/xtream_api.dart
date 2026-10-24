@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:isolate';
 import 'dart:typed_data';
@@ -5,6 +6,7 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 
 import '../config.dart';
+import 'disk_cache.dart';
 import 'models.dart';
 
 class XtreamException implements Exception {
@@ -51,11 +53,40 @@ class XtreamApi {
   }
 
   Future<List<T>> _listOf<T>(String action, T Function(Map<String, dynamic>) fromJson) async {
-    final bytes = await _fetch({'action': action});
+    final bytes = await _cachedFetch(action);
     try {
       return await Isolate.run(() => _parseList<T>(bytes, fromJson));
     } catch (_) {
+      await DiskCache.deleteList(_listName(action));
       throw XtreamException('Unexpected response from the server.');
+    }
+  }
+
+  String _listName(String action) => '$host|$username|$action';
+
+  /// Lists already updated in the background during this app start.
+  static final Set<String> _refreshed = {};
+
+  /// Uses the copy saved on the TV so the screen opens at once, and quietly
+  /// downloads a fresh copy for next time. A copy older than a day is only
+  /// used if the server can't be reached.
+  Future<Uint8List> _cachedFetch(String action) async {
+    final name = _listName(action);
+    final saved = await DiskCache.readList(name);
+    if (saved != null && saved.$2 < const Duration(hours: 24)) {
+      if (_refreshed.add(name)) {
+        unawaited(_fetch({'action': action}).then((b) => DiskCache.writeList(name, b)).catchError((_) {}));
+      }
+      return saved.$1;
+    }
+    try {
+      final fresh = await _fetch({'action': action});
+      _refreshed.add(name);
+      unawaited(DiskCache.writeList(name, fresh));
+      return fresh;
+    } catch (e) {
+      if (saved != null) return saved.$1;
+      rethrow;
     }
   }
 

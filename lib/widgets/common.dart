@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../config.dart';
+import '../data/disk_cache.dart';
 import '../utils.dart';
 import 'tv_keyboard.dart';
 
@@ -34,7 +36,7 @@ class SignatureBadge extends StatelessWidget {
   }
 }
 
-class NetImage extends StatelessWidget {
+class NetImage extends StatefulWidget {
   final String url;
   final BoxFit fit;
   final IconData fallbackIcon;
@@ -48,20 +50,76 @@ class NetImage extends StatelessWidget {
     this.cacheWidth,
   });
 
+  @override
+  State<NetImage> createState() => _NetImageState();
+}
+
+/// Image saved on the TV after the first download (see DiskCache).
+class _NetImageState extends State<NetImage> {
+  File? _file;
+  bool _failed = false;
+
+  bool get _valid => widget.url.isNotEmpty && widget.url.startsWith('http');
+
+  @override
+  void initState() {
+    super.initState();
+    _resolve();
+  }
+
+  @override
+  void didUpdateWidget(covariant NetImage old) {
+    super.didUpdateWidget(old);
+    if (old.url != widget.url) _resolve();
+  }
+
+  void _resolve() {
+    _failed = false;
+    _file = null;
+    if (!_valid) return;
+    final url = widget.url;
+    final saved = DiskCache.cachedImage(url);
+    if (saved != null) {
+      _file = saved;
+      return;
+    }
+    DiskCache.image(url).then((f) {
+      if (!mounted || widget.url != url) return;
+      setState(() {
+        _file = f;
+        _failed = f == null;
+      });
+    });
+  }
+
   Widget _fallback() => Center(
-        child: Icon(fallbackIcon, color: fade(AppConfig.textSecondary, 0.6), size: 22),
+        child: Icon(widget.fallbackIcon, color: fade(AppConfig.textSecondary, 0.6), size: 22),
       );
 
   @override
   Widget build(BuildContext context) {
-    if (url.isEmpty || !url.startsWith('http')) return _fallback();
-    return Image.network(
-      url,
-      fit: fit,
-      cacheWidth: cacheWidth,
+    if (!_valid || _failed) return _fallback();
+    final file = _file;
+    if (file == null) return const SizedBox.expand();
+    return Image.file(
+      file,
+      fit: widget.fit,
+      cacheWidth: widget.cacheWidth,
       gaplessPlayback: true,
       filterQuality: FilterQuality.low,
-      errorBuilder: (_, __, ___) => _fallback(),
+      // Soft fade-in instead of popping in.
+      frameBuilder: (context, child, frame, sync) {
+        if (sync) return child;
+        return AnimatedOpacity(
+          opacity: frame == null ? 0 : 1,
+          duration: const Duration(milliseconds: 180),
+          child: child,
+        );
+      },
+      errorBuilder: (_, __, ___) {
+        DiskCache.forgetImage(widget.url);
+        return _fallback();
+      },
     );
   }
 }
@@ -441,6 +499,28 @@ class RemoteLongPress extends StatefulWidget {
   final Widget child;
   const RemoteLongPress({super.key, required this.onTap, required this.onLongPress, required this.child});
 
+  static bool _swallow = false;
+
+  /// Placed around the whole app (main.dart): eats the rest of a held OK
+  /// press after a long press fired.
+  static KeyEventResult guard(FocusNode node, KeyEvent e) {
+    if (!_swallow) return KeyEventResult.ignored;
+    final k = e.logicalKey;
+    if (k != LogicalKeyboardKey.select &&
+        k != LogicalKeyboardKey.enter &&
+        k != LogicalKeyboardKey.numpadEnter &&
+        k != LogicalKeyboardKey.gameButtonA) {
+      return KeyEventResult.ignored;
+    }
+    // A new press: the old one is over (its release may have gone elsewhere).
+    if (e is KeyDownEvent) {
+      _swallow = false;
+      return KeyEventResult.ignored;
+    }
+    if (e is KeyUpEvent) _swallow = false;
+    return KeyEventResult.handled;
+  }
+
   @override
   State<RemoteLongPress> createState() => _RemoteLongPressState();
 }
@@ -455,6 +535,11 @@ class _RemoteLongPressState extends State<RemoteLongPress> {
   Timer? _timer;
   bool _down = false;
   bool _fired = false;
+
+  // After a long press, ignore OK until the button is let go. Otherwise, when
+  // the item disappears (e.g. removed from Favorites), the still-held button
+  // would "press" the next item that gets the focus.
+  static void _swallowUntilRelease() => RemoteLongPress._swallow = true;
 
   @override
   void dispose() {
@@ -471,6 +556,7 @@ class _RemoteLongPressState extends State<RemoteLongPress> {
       _timer = Timer(const Duration(milliseconds: 600), () {
         if (_down && !_fired) {
           _fired = true;
+          _swallowUntilRelease();
           HapticFeedback.mediumImpact();
           widget.onLongPress?.call();
         }
@@ -481,6 +567,7 @@ class _RemoteLongPressState extends State<RemoteLongPress> {
     if (e is KeyUpEvent) {
       if (!_down) return KeyEventResult.ignored;
       _timer?.cancel();
+      RemoteLongPress._swallow = false; // released on the same item
       final tap = !_fired;
       _down = false;
       if (tap) widget.onTap();

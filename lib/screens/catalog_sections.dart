@@ -358,7 +358,11 @@ class _PosterCardState extends State<PosterCard> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: Container(
+              child: AnimatedScale(
+                scale: _focus ? 1.06 : 1.0,
+                duration: const Duration(milliseconds: 140),
+                curve: Curves.easeOutCubic,
+                child: Container(
                 decoration: BoxDecoration(
                   color: AppConfig.surfaceHigh,
                   borderRadius: BorderRadius.circular(10),
@@ -403,6 +407,7 @@ class _PosterCardState extends State<PosterCard> {
                     ],
                   ),
                 ),
+              ),
               ),
             ),
             const SizedBox(height: 8),
