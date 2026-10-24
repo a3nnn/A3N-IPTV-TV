@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import 'config.dart';
 import 'data/disk_cache.dart';
@@ -13,6 +14,11 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
   await Storage.init();
+  // The installed app's real version (same number as typed in release.bat).
+  try {
+    final info = await PackageInfo.fromPlatform();
+    if (RegExp(r'^\d+\.\d+').hasMatch(info.version)) AppConfig.version = info.version;
+  } catch (_) {}
   // Saved posters / lists on the TV (doesn't hold up the start).
   DiskCache.init();
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../config.dart';
@@ -42,6 +44,36 @@ class _UpdateDialogState extends State<_UpdateDialog> {
   double _progress = 0;
   String? _error;
 
+  // The lists behind can finish loading while this is open and grab the
+  // remote's focus; keep pulling it back to this window.
+  final FocusScopeNode _scope = FocusScopeNode();
+  final FocusNode _updateBtn = FocusNode();
+  Timer? _keepFocus;
+
+  @override
+  void initState() {
+    super.initState();
+    _keepFocus = Timer.periodic(const Duration(milliseconds: 250), (_) => _grabFocus());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _grabFocus());
+  }
+
+  void _grabFocus() {
+    if (!mounted || _scope.hasFocus) return;
+    if (_updateBtn.context != null) {
+      _updateBtn.requestFocus();
+    } else {
+      _scope.requestFocus();
+    }
+  }
+
+  @override
+  void dispose() {
+    _keepFocus?.cancel();
+    _scope.dispose();
+    _updateBtn.dispose();
+    super.dispose();
+  }
+
   Future<void> _update() async {
     setState(() {
       _phase = _Phase.downloading;
@@ -82,7 +114,9 @@ class _UpdateDialogState extends State<_UpdateDialog> {
 
     return PopScope(
       canPop: !busy,
-      child: AlertDialog(
+      child: FocusScope(
+        node: _scope,
+        child: AlertDialog(
         backgroundColor: AppConfig.surface,
         title: Row(
           children: [
@@ -141,11 +175,13 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                 ),
                 FilledButton.icon(
                   autofocus: true,
+                  focusNode: _updateBtn,
                   onPressed: _update,
                   icon: const Icon(Icons.download_rounded),
                   label: Text(_phase == _Phase.error ? 'Try again' : 'Update'),
                 ),
               ],
+      ),
       ),
     );
   }

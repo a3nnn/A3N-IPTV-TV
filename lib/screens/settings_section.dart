@@ -123,7 +123,7 @@ class _SettingsSectionState extends State<SettingsSection> {
               padding: EdgeInsets.symmetric(vertical: 12),
               child: Align(alignment: Alignment.centerLeft, child: BrandMark(size: 34)),
             ),
-            const _InfoRow('Version', AppConfig.version),
+            _InfoRow('Version', AppConfig.version),
             const _InfoRow('', AppConfig.signature),
             const SizedBox(height: 12),
             Align(

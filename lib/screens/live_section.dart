@@ -596,7 +596,6 @@ class _LiveSectionState extends State<LiveSection> {
               const ColoredBox(color: Colors.black),
               _video(),
               _bufferingIndicator(),
-              const Positioned(top: 72, left: 22, child: StreamInfoBadge()),
               AnimatedOpacity(
                 opacity: _overlay ? 1 : 0,
                 duration: const Duration(milliseconds: 250),
@@ -619,7 +618,7 @@ class _LiveSectionState extends State<LiveSection> {
                           ),
                           child: Row(
                             children: [
-                              const SignatureBadge(),
+                              StreamInfoBadge(show: _overlay),
                               const Spacer(),
                               const ClockText(),
                               const SizedBox(width: 18),

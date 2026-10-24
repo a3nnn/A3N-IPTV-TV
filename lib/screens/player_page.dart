@@ -182,7 +182,6 @@ class _PlayerPageState extends State<PlayerPage> {
                   padding: const EdgeInsets.fromLTRB(60, 0, 60, 70),
                 ),
               ),
-              const Positioned(top: 76, left: 28, child: StreamInfoBadge()),
               StreamBuilder<bool>(
                 stream: p.stream.buffering,
                 initialData: p.state.buffering,
@@ -211,7 +210,7 @@ class _PlayerPageState extends State<PlayerPage> {
                           ),
                           child: Row(
                             children: [
-                              const SignatureBadge(),
+                              StreamInfoBadge(show: _overlay),
                               const SizedBox(width: 16),
                               Expanded(
                                 child: Text(

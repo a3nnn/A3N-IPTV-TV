@@ -9,7 +9,11 @@ import '../utils.dart';
 class StreamInfoBadge extends StatefulWidget {
   /// Smaller text for the small preview window.
   final bool compact;
-  const StreamInfoBadge({super.key, this.compact = false});
+
+  /// When given, the badge shows and hides together with the player's info
+  /// bar (true = shown) instead of disappearing on its own.
+  final bool? show;
+  const StreamInfoBadge({super.key, this.compact = false, this.show});
 
   @override
   State<StreamInfoBadge> createState() => _StreamInfoBadgeState();
@@ -43,7 +47,13 @@ class _StreamInfoBadgeState extends State<StreamInfoBadge> {
     final run = ++_run;
     _poll?.cancel();
     _hide?.cancel();
-    if (_visible && mounted) setState(() => _visible = false);
+    // Old stream's info goes away until the new one is known.
+    if ((_visible || _text != null) && mounted) {
+      setState(() {
+        _visible = false;
+        _text = null;
+      });
+    }
     var tries = 0;
     _poll = Timer.periodic(const Duration(milliseconds: 600), (t) async {
       if (++tries > 25) t.cancel();
@@ -58,6 +68,7 @@ class _StreamInfoBadgeState extends State<StreamInfoBadge> {
         _text = _label(w, h, fps);
         _visible = true;
       });
+      if (widget.show != null) return; // follows the info bar
       _hide = Timer(const Duration(seconds: 4), () {
         if (mounted) setState(() => _visible = false);
       });
@@ -85,7 +96,7 @@ class _StreamInfoBadgeState extends State<StreamInfoBadge> {
     final small = widget.compact;
     return IgnorePointer(
       child: AnimatedOpacity(
-        opacity: _visible && _text != null ? 1 : 0,
+        opacity: (widget.show ?? _visible) && _text != null ? 1 : 0,
         duration: const Duration(milliseconds: 300),
         child: Container(
           padding: EdgeInsets.symmetric(horizontal: small ? 8 : 12, vertical: small ? 4 : 6),

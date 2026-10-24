@@ -17,6 +17,7 @@ dependencies:
   device_info_plus: '>=10.1.0 <14.0.0'
   path_provider: ^2.1.0
   open_filex: '>=4.5.0 <6.0.0'
+  package_info_plus: '>=8.0.0 <10.0.0'
 
 flutter:
   uses-material-design: true
