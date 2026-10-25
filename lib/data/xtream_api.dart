@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import '../config.dart';
 import 'disk_cache.dart';
 import 'models.dart';
+import '../l10n.dart';
 
 class XtreamException implements Exception {
   final String message;
@@ -58,7 +59,7 @@ class XtreamApi {
       return await Isolate.run(() => _parseList<T>(bytes, fromJson));
     } catch (_) {
       await DiskCache.deleteList(_listName(action));
-      throw XtreamException('Unexpected response from the server.');
+      throw XtreamException(tr('Unexpected response from the server.', 'رد غير متوقع من السيرفر.'));
     }
   }
 
@@ -95,7 +96,7 @@ class XtreamApi {
     try {
       return await Isolate.run(() => _decode(bytes));
     } catch (_) {
-      throw XtreamException('Unexpected response from the server.');
+      throw XtreamException(tr('Unexpected response from the server.', 'رد غير متوقع من السيرفر.'));
     }
   }
 
@@ -111,27 +112,27 @@ class XtreamApi {
           .get(uri, headers: {'User-Agent': AppConfig.userAgent})
           .timeout(const Duration(seconds: 40));
     } catch (_) {
-      throw XtreamException('Could not reach the server. Check your internet connection.');
+      throw XtreamException(tr('Could not reach the server. Check your internet connection.', 'ما قدرنا نوصل للسيرفر. تأكد من الإنترنت.'));
     }
     if (res.statusCode == 401 || res.statusCode == 403) {
-      throw XtreamException('Access denied by the server (${res.statusCode}).');
+      throw XtreamException(tr('Access denied by the server (${res.statusCode}).', 'السيرفر رفض الدخول (${res.statusCode}).'));
     }
     if (res.statusCode != 200) {
-      throw XtreamException('Server error (${res.statusCode}).');
+      throw XtreamException(tr('Server error (${res.statusCode}).', 'خطأ في السيرفر (${res.statusCode}).'));
     }
     return res.bodyBytes;
   }
 
   Future<AccountInfo> login() async {
     final data = await _get(const {});
-    if (data is! Map) throw XtreamException('Unexpected response from the server.');
+    if (data is! Map) throw XtreamException(tr('Unexpected response from the server.', 'رد غير متوقع من السيرفر.'));
     final ui = data['user_info'];
     if (ui is! Map || '${ui['auth']}' != '1') {
-      throw XtreamException('Wrong username or password.');
+      throw XtreamException(tr('Wrong username or password.', 'اسم المستخدم أو كلمة المرور غلط.'));
     }
     final info = AccountInfo.fromJson(Map<String, dynamic>.from(ui));
     if (info.status.isNotEmpty && info.status.toLowerCase() != 'active') {
-      throw XtreamException('Subscription status: ${info.status}');
+      throw XtreamException(tr('Subscription status: ${info.status}', 'حالة الاشتراك: ${info.status}'));
     }
     return info;
   }

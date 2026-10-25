@@ -9,6 +9,7 @@ import '../widgets/category_panel.dart';
 import '../widgets/common.dart';
 import 'player_page.dart';
 import 'series_detail_screen.dart';
+import '../l10n.dart';
 
 const String _allId = '__all';
 const String _favId = '__fav';
@@ -66,7 +67,7 @@ class MoviesSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      CatalogSection(section: 'movies', favKey: 'fav_movies', load: _load, allLabel: 'All Movies', searchHint: 'Search movies');
+      CatalogSection(section: 'movies', favKey: 'fav_movies', load: _load, allLabel: tr('All Movies', 'كل الأفلام'), searchHint: tr('Search movies', 'ابحث في الأفلام'));
 }
 
 // ------------------------------------------------------------ Series
@@ -98,7 +99,7 @@ class SeriesSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      CatalogSection(section: 'series', favKey: 'fav_series', load: _load, allLabel: 'All Series', searchHint: 'Search series');
+      CatalogSection(section: 'series', favKey: 'fav_series', load: _load, allLabel: tr('All Series', 'كل المسلسلات'), searchHint: tr('Search series', 'ابحث في المسلسلات'));
 }
 
 // ------------------------------------------------------------ shared grid
@@ -193,7 +194,7 @@ class _CatalogSectionState extends State<CatalogSection> {
   Future<void> _toggleFav(CatalogItem item) async {
     final added = await Storage.toggleFav(widget.favKey, item.id);
     if (!mounted) return;
-    showToast(context, added ? '★  ${item.title} added to favorites' : '${item.title} removed from favorites');
+    showToast(context, added ? tr('★  ${item.title} added to favorites', '★  تمت إضافة ${item.title} للمفضلة') : tr('${item.title} removed from favorites', 'تمت إزالة ${item.title} من المفضلة'));
     setState(() {
       _refreshFavs();
       if (_categoryId == _favId) _applyFilter();
@@ -240,7 +241,7 @@ class _CatalogSectionState extends State<CatalogSection> {
             entries: [
               CategoryEntry(
                   id: _favId,
-                  name: 'Favorites',
+                  name: tr('Favorites', 'المفضلة'),
                   count: _favCount,
                   fixed: true,
                   icon: Icons.star_rounded,
@@ -272,7 +273,7 @@ class _CatalogSectionState extends State<CatalogSection> {
                 child: _visible.isEmpty
                     ? Center(
                         child: Text(
-                          _categoryId == _favId ? 'No favorites yet.\nHold OK on a poster to add it.' : 'Nothing here',
+                          _categoryId == _favId ? tr('No favorites yet.\nHold OK on a poster to add it.', 'ما فيه مفضلة للحين.\nاضغط مطوّل على OK فوق البوستر عشان تضيفه.') : tr('Nothing here', 'لا يوجد محتوى'),
                           textAlign: TextAlign.center,
                           style: const TextStyle(color: AppConfig.textSecondary),
                         ),

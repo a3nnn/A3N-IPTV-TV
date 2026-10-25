@@ -56,3 +56,6 @@ app.*.map.json
 # Signing key - NEVER upload
 /signing/
 *.jks
+
+# thmanyah font: only the encrypted copies (*.otf.enc) may be uploaded
+/assets/fonts/*.otf

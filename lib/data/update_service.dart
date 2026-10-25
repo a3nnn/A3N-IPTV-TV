@@ -7,6 +7,7 @@ import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../config.dart';
+import '../l10n.dart';
 
 class UpdateInfo {
   final String version;
@@ -92,8 +93,11 @@ class UpdateService {
     final r = await OpenFilex.open(apk.path, type: 'application/vnd.android.package-archive');
     if (r.type == ResultType.done) return null;
     if (r.type == ResultType.permissionDenied) {
-      return 'Allow installing apps for A3N IPTV:\n'
-          'Settings > Apps > Special app access > Install unknown apps > A3N IPTV Player';
+      return tr(
+          'Allow installing apps for A3N IPTV:\n'
+              'Settings > Apps > Special app access > Install unknown apps > A3N IPTV Player',
+          'اسمح للتطبيق بتثبيت التطبيقات:\n'
+              'الإعدادات > التطبيقات > وصول خاص > تثبيت تطبيقات غير معروفة > A3N IPTV Player');
     }
     return r.message;
   }

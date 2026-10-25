@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:media_kit/media_kit.dart';
 
 import '../player/player_service.dart';
 import '../utils.dart';
@@ -22,6 +23,7 @@ class StreamInfoBadge extends StatefulWidget {
 class _StreamInfoBadgeState extends State<StreamInfoBadge> {
   final PlayerService _svc = PlayerService.instance;
   Timer? _poll;
+  StreamSubscription<VideoParams>? _sub;
   Timer? _hide;
   String? _text;
   bool _visible = false;
@@ -37,14 +39,18 @@ class _StreamInfoBadgeState extends State<StreamInfoBadge> {
   @override
   void dispose() {
     _svc.opened.removeListener(_detect);
+    _sub?.cancel();
     _poll?.cancel();
     _hide?.cancel();
     super.dispose();
   }
 
   /// Waits until the new stream reports its size, then shows the badge.
+  /// Only listens to the player's own updates while the stream opens (asking
+  /// the player directly at that moment could freeze some TVs).
   void _detect() {
     final run = ++_run;
+    _sub?.cancel();
     _poll?.cancel();
     _hide?.cancel();
     // Old stream's info goes away until the new one is known.
@@ -54,24 +60,44 @@ class _StreamInfoBadgeState extends State<StreamInfoBadge> {
         _text = null;
       });
     }
-    var tries = 0;
-    _poll = Timer.periodic(const Duration(milliseconds: 600), (t) async {
-      if (++tries > 25) t.cancel();
-      final w = int.tryParse(await _svc.property('video-params/w')) ?? 0;
-      final h = int.tryParse(await _svc.property('video-params/h')) ?? 0;
-      if (!mounted || run != _run || h <= 0) return;
-      t.cancel();
-      var fps = double.tryParse(await _svc.property('container-fps')) ?? 0;
-      if (fps <= 0) fps = double.tryParse(await _svc.property('estimated-vf-fps')) ?? 0;
+    final p = _svc.player;
+    void use(VideoParams v) {
+      final w = v.w ?? 0, h = v.h ?? 0;
+      if (h <= 0 || run != _run) return;
+      _sub?.cancel();
+      _poll?.cancel();
+      _show(run, w, h);
+    }
+
+    _sub = p.stream.videoParams.listen(use);
+    // Already playing when this appears (e.g. going full screen): use it.
+    // Right after opening a stream, wait a moment so the old size isn't shown.
+    final since = DateTime.now().difference(_svc.openedAt).inMilliseconds;
+    final wait = (2500 - since).clamp(0, 2500);
+    _poll = Timer(Duration(milliseconds: wait), () => use(p.state.videoParams));
+  }
+
+  Future<void> _show(int run, int w, int h) async {
+    final p = _svc.player;
+    // Frame rate: asked once, only after the video is really playing.
+    var fps = 0.0;
+    for (var i = 0; i < 10 && (p.state.buffering || !p.state.playing); i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 500));
       if (!mounted || run != _run) return;
-      setState(() {
-        _text = _label(w, h, fps);
-        _visible = true;
-      });
-      if (widget.show != null) return; // follows the info bar
-      _hide = Timer(const Duration(seconds: 4), () {
-        if (mounted) setState(() => _visible = false);
-      });
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 800));
+    if (!mounted || run != _run) return;
+    if (p.state.playing && !p.state.buffering) {
+      fps = double.tryParse(await _svc.property('container-fps')) ?? 0;
+    }
+    if (!mounted || run != _run) return;
+    setState(() {
+      _text = _label(w, h, fps);
+      _visible = true;
+    });
+    if (widget.show != null) return; // follows the info bar
+    _hide = Timer(const Duration(seconds: 4), () {
+      if (mounted) setState(() => _visible = false);
     });
   }
 

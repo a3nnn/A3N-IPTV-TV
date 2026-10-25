@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../config.dart';
 import '../data/storage.dart';
 import 'common.dart';
+import '../l10n.dart';
 
 class CategoryEntry {
   final String id;
@@ -77,7 +78,7 @@ class _CategoryPanelState extends State<CategoryPanel> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _label('CATEGORIES', top: 16),
+        _label(tr('CATEGORIES', 'الأقسام'), top: 16),
         Expanded(
           child: StayInList(
             child: ListView.builder(
@@ -93,7 +94,7 @@ class _CategoryPanelState extends State<CategoryPanel> {
             },
             itemBuilder: (context, i) {
               final it = items[i];
-              if (it == 'PINNED') return _label('PINNED');
+              if (it == 'PINNED') return _label(tr('PINNED', 'المثبتة'));
               if (it == 'DIVIDER') return const Divider(height: 9, indent: 12, endIndent: 12);
               final (e, isPinned) = it as (CategoryEntry, bool);
               return _row(e, pinned: isPinned);
@@ -108,8 +109,8 @@ class _CategoryPanelState extends State<CategoryPanel> {
   Widget _label(String text, {double top = 10}) => Padding(
         padding: EdgeInsets.fromLTRB(16, top, 16, 6),
         child: Text(text,
-            style: const TextStyle(
-                fontSize: 11, letterSpacing: 1.4, color: AppConfig.textSecondary, fontWeight: FontWeight.w700)),
+            style: TextStyle(
+                fontSize: 11, letterSpacing: L.spacing(1.4), color: AppConfig.textSecondary, fontWeight: FontWeight.w700)),
       );
 
   Widget _row(CategoryEntry e, {required bool pinned}) {
@@ -124,11 +125,11 @@ class _CategoryPanelState extends State<CategoryPanel> {
             ? null
             : () {
                 _togglePin(e.id);
-                showToast(context, _pinned.contains(e.id) ? '📌  ${e.name} pinned to top' : '${e.name} unpinned');
+                showToast(context, _pinned.contains(e.id) ? tr('📌  ${e.name} pinned to top', '📌  تم تثبيت ${e.name} فوق') : tr('${e.name} unpinned', 'تم إلغاء تثبيت ${e.name}'));
               },
         leading: e.icon != null
             ? Padding(
-                padding: const EdgeInsets.only(right: 8),
+                padding: const EdgeInsetsDirectional.only(end: 8),
                 child: Icon(e.icon, size: 18, color: e.iconColor ?? AppConfig.textSecondary),
               )
             : null,
@@ -138,7 +139,7 @@ class _CategoryPanelState extends State<CategoryPanel> {
           children: [
             if (pinned)
               const Padding(
-                padding: EdgeInsets.only(right: 6),
+                padding: EdgeInsetsDirectional.only(end: 6),
                 child: Icon(Icons.push_pin_rounded, size: 15, color: AppConfig.primary),
               ),
             CountLabel(e.count),

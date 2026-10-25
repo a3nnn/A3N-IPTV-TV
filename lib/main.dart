@@ -4,6 +4,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import 'config.dart';
+import 'l10n.dart';
 import 'data/disk_cache.dart';
 import 'data/storage.dart';
 import 'screens/start_gate.dart';
@@ -19,6 +20,7 @@ Future<void> main() async {
     final info = await PackageInfo.fromPlatform();
     if (RegExp(r'^\d+\.\d+').hasMatch(info.version)) AppConfig.version = info.version;
   } catch (_) {}
+  L.init();
   // Saved posters / lists on the TV (doesn't hold up the start).
   DiskCache.init();
 
@@ -42,7 +44,16 @@ class A3NApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Changing the language redraws the whole app (new key = fresh screens).
+    return ValueListenableBuilder<bool>(
+      valueListenable: L.arabic,
+      builder: (context, arabic, _) => _app(arabic),
+    );
+  }
+
+  Widget _app(bool arabic) {
     return MaterialApp(
+      key: ValueKey(arabic),
       title: AppConfig.appName,
       debugShowCheckedModeBanner: false,
       theme: buildTheme(),
@@ -55,13 +66,17 @@ class A3NApp extends StatelessWidget {
         const SingleActivator(LogicalKeyboardKey.gameButtonA): const ActivateIntent(),
       },
       // Remote navigation: the focused row glides to the middle of the list.
-      builder: (context, child) => Focus(
-        canRequestFocus: false,
-        skipTraversal: true,
-        onKeyEvent: RemoteLongPress.guard,
-        child: FocusTraversalGroup(
-          policy: ReadingOrderTraversalPolicy(requestFocusCallback: _smoothFocus),
-          child: child!,
+      // Arabic: the whole interface is laid out right-to-left.
+      builder: (context, child) => Directionality(
+        textDirection: arabic ? TextDirection.rtl : TextDirection.ltr,
+        child: Focus(
+          canRequestFocus: false,
+          skipTraversal: true,
+          onKeyEvent: RemoteLongPress.guard,
+          child: FocusTraversalGroup(
+            policy: ReadingOrderTraversalPolicy(requestFocusCallback: _smoothFocus),
+            child: child!,
+          ),
         ),
       ),
       home: const StartGate(),

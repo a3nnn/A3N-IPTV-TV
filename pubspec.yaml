@@ -23,3 +23,13 @@ flutter:
   uses-material-design: true
   assets:
     - assets/logo.png
+  # thmanyah Sans. The font files are stored encrypted in the repository
+  # (assets/fonts/*.enc) and decrypted only while GitHub builds the app.
+  fonts:
+    - family: Thmanyah
+      fonts:
+        - asset: assets/fonts/thmanyahsans-Regular.otf
+        - asset: assets/fonts/thmanyahsans-Medium.otf
+          weight: 500
+        - asset: assets/fonts/thmanyahsans-Bold.otf
+          weight: 700

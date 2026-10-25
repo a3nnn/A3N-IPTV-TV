@@ -22,7 +22,7 @@ ThemeData buildTheme() {
     useMaterial3: true,
     brightness: Brightness.dark,
     colorScheme: scheme,
-    fontFamily: 'Roboto',
+    fontFamily: 'Thmanyah',
     scaffoldBackgroundColor: AppConfig.background,
     dividerColor: AppConfig.divider,
     // Simple fade between pages: no screenshot of the old page (lighter, avoids

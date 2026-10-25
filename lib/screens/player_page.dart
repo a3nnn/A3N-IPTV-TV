@@ -8,8 +8,8 @@ import 'package:media_kit_video/media_kit_video.dart';
 import '../config.dart';
 import '../player/player_service.dart';
 import '../utils.dart';
-import '../widgets/common.dart';
 import '../widgets/stream_info.dart';
+import '../l10n.dart';
 
 /// Full-screen player for movies and episodes, driven by the TV remote:
 /// OK = play / pause, ◀ ▶ = seek 10 s (hold to go faster), BACK = close.
@@ -209,6 +209,8 @@ class _PlayerPageState extends State<PlayerPage> {
                             ),
                           ),
                           child: Row(
+                            // Quality badge stays top-left in both languages.
+                            textDirection: TextDirection.ltr,
                             children: [
                               StreamInfoBadge(show: _overlay),
                               const SizedBox(width: 16),
@@ -222,7 +224,7 @@ class _PlayerPageState extends State<PlayerPage> {
                               ),
                               const SizedBox(width: 16),
                               Text(
-                                'OK  play/pause     ◀ ▶  seek     ▼  audio & subtitles     BACK  exit',
+                                tr('OK  play/pause     ◀ ▶  seek     ▼  audio & subtitles     BACK  exit', 'OK  تشغيل/إيقاف     ◀ ▶  ترجيع/تقديم     ▼  الصوت والترجمة     رجوع  خروج'),
                                 style: TextStyle(fontSize: 12, color: fade(Colors.white, 0.6)),
                               ),
                             ],
@@ -242,7 +244,10 @@ class _PlayerPageState extends State<PlayerPage> {
                               colors: [fade(Colors.black, 0.85), Colors.transparent],
                             ),
                           ),
-                          child: StreamBuilder<Duration>(
+                          // Time bar always runs left → right, like the ◀ ▶ buttons.
+                          child: Directionality(
+                            textDirection: TextDirection.ltr,
+                            child: StreamBuilder<Duration>(
                             stream: p.stream.position,
                             initialData: p.state.position,
                             builder: (context, _) {
@@ -282,6 +287,7 @@ class _PlayerPageState extends State<PlayerPage> {
                               );
                             },
                           ),
+                          ),
                         ),
                       ),
                     ],
@@ -306,7 +312,7 @@ String _trackLabel(String id, String? title, String? language, int index) {
     if (lang.isNotEmpty) lang.toUpperCase(),
     if (name.isNotEmpty && name.toLowerCase() != lang.toLowerCase()) name,
   ];
-  return parts.isEmpty ? 'Track ${index + 1}' : parts.join('  ·  ');
+  return parts.isEmpty ? tr('Track ${index + 1}', 'مسار ${index + 1}') : parts.join('  ·  ');
 }
 
 class _TracksDialog extends StatefulWidget {
@@ -353,8 +359,8 @@ class _TracksDialogState extends State<_TracksDialog> {
                 Icon(icon, size: 18, color: AppConfig.textSecondary),
                 const SizedBox(width: 8),
                 Text(title,
-                    style: const TextStyle(
-                        fontSize: 12, letterSpacing: 1.3, color: AppConfig.textSecondary, fontWeight: FontWeight.w700)),
+                    style: TextStyle(
+                        fontSize: 12, letterSpacing: L.spacing(1.3), color: AppConfig.textSecondary, fontWeight: FontWeight.w700)),
               ]),
               const SizedBox(height: 8),
               Flexible(child: ListView(shrinkWrap: true, children: children)),
@@ -364,9 +370,9 @@ class _TracksDialogState extends State<_TracksDialog> {
 
     final audioList = <Widget>[
       if (audio.isEmpty)
-        const Padding(
-          padding: EdgeInsets.all(12),
-          child: Text('Only one audio track', style: TextStyle(color: AppConfig.textSecondary)),
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: Text(tr('Only one audio track', 'يوجد مسار صوت واحد فقط'), style: const TextStyle(color: AppConfig.textSecondary)),
         ),
       for (var i = 0; i < audio.length; i++)
         option(
@@ -382,7 +388,7 @@ class _TracksDialogState extends State<_TracksDialog> {
 
     final subList = <Widget>[
       option(
-        label: 'Off',
+        label: tr('Off', 'بدون ترجمة'),
         selected: current.subtitle.id == 'no' || !subs.any((s) => s.id == current.subtitle.id),
         autofocus: audio.isEmpty,
         onTap: () {
@@ -400,9 +406,9 @@ class _TracksDialogState extends State<_TracksDialog> {
           },
         ),
       if (subs.isEmpty)
-        const Padding(
-          padding: EdgeInsets.all(12),
-          child: Text('No subtitles in this file', style: TextStyle(color: AppConfig.textSecondary)),
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: Text(tr('No subtitles in this file', 'ما فيه ترجمة في هذا الملف'), style: const TextStyle(color: AppConfig.textSecondary)),
         ),
     ];
 
@@ -415,9 +421,9 @@ class _TracksDialogState extends State<_TracksDialog> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            column('AUDIO', Icons.audiotrack_rounded, audioList),
+            column(tr('AUDIO', 'الصوت'), Icons.audiotrack_rounded, audioList),
             const SizedBox(width: 20),
-            column('SUBTITLES', Icons.subtitles_rounded, subList),
+            column(tr('SUBTITLES', 'الترجمة'), Icons.subtitles_rounded, subList),
           ],
         ),
       ),

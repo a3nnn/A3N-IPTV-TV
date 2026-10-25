@@ -53,6 +53,7 @@ class PlayerService {
 
   /// Bumped every time a new stream is opened (shows the quality badge).
   final ValueNotifier<int> opened = ValueNotifier<int>(0);
+  DateTime openedAt = DateTime(2000);
 
   String? _currentUrl;
 
@@ -80,6 +81,7 @@ class PlayerService {
   Future<void> play(String url) async {
     if (_currentUrl == url) return;
     _currentUrl = url;
+    openedAt = DateTime.now();
     opened.value++;
     await player.open(Media(url, httpHeaders: const {'User-Agent': AppConfig.userAgent}));
   }

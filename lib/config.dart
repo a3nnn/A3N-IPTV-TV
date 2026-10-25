@@ -14,7 +14,7 @@ class AppConfig {
   static const String signature = 'Made by A3N';
   // Used only if the real number can't be read. The real number comes from
   // the version typed in release.bat (read from the installed app at start).
-  static const String fallbackVersion = '1.0.9';
+  static const String fallbackVersion = '1.1.0';
   static String version = fallbackVersion;
 
   // ---------- مراقبة الأجهزة والإيقاف (Supabase) ----------

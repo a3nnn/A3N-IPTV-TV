@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../config.dart';
 import '../utils.dart';
+import '../l10n.dart';
 
 const _en = ['1234567890', 'qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
 const _ar = ['1234567890', 'ضصثقفغعهخحج', 'شسيبلاتنمكط', 'ئءؤرىةوزظدذ'];
@@ -22,7 +23,7 @@ class TvKeyboardDialog extends StatefulWidget {
 
 class _TvKeyboardDialogState extends State<TvKeyboardDialog> {
   late String _text = widget.initial;
-  late bool _arabic = RegExp('[؀-ۿ]').hasMatch(widget.initial);
+  late bool _arabic = widget.initial.isEmpty ? L.isAr : RegExp('[؀-ۿ]').hasMatch(widget.initial);
 
   void _set(String v) {
     setState(() => _text = v);
@@ -90,7 +91,7 @@ class _TvKeyboardDialogState extends State<TvKeyboardDialog> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          _text.isEmpty ? 'Type with the keys below' : '$_text|',
+                          _text.isEmpty ? tr('Type with the keys below', 'اكتب باستخدام الأزرار تحت') : '$_text|',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -133,10 +134,10 @@ class _TvKeyboardDialogState extends State<TvKeyboardDialog> {
                     const SizedBox(width: 6),
                     _Key(icon: Icons.backspace_outlined, width: 70, onTap: _backspace),
                     const SizedBox(width: 6),
-                    _Key(label: 'Clear', width: 80, onTap: () => _set('')),
+                    _Key(label: tr('Clear', 'مسح'), width: 80, onTap: () => _set('')),
                     const SizedBox(width: 6),
                     _Key(
-                      label: 'Search',
+                      label: tr('Search', 'بحث'),
                       width: 110,
                       primary: true,
                       onTap: () => Navigator.of(context).pop(_text),

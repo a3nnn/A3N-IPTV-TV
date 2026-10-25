@@ -8,6 +8,7 @@ import '../config.dart';
 import '../data/disk_cache.dart';
 import '../utils.dart';
 import 'tv_keyboard.dart';
+import '../l10n.dart';
 
 
 /// "Made by A3N" — shown top-left on every screen.
@@ -219,9 +220,9 @@ class _SelectableRowState extends State<SelectableRow> {
         hoverColor: fade(AppConfig.textPrimary, 0.05),
         child: Container(
           height: widget.height,
-          padding: const EdgeInsets.only(left: 12, right: 6),
+          padding: const EdgeInsetsDirectional.only(start: 12, end: 6),
           decoration: BoxDecoration(
-            border: Border(left: BorderSide(color: edge, width: 3)),
+            border: BorderDirectional(start: BorderSide(color: edge, width: 3)),
           ),
           child: Row(
             children: [
@@ -270,7 +271,7 @@ class CountLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(right: 8),
+        padding: const EdgeInsetsDirectional.only(end: 8),
         child: Text('$count', style: const TextStyle(fontSize: 12, color: AppConfig.textSecondary)),
       );
 }
@@ -318,7 +319,7 @@ class ErrorView extends StatelessWidget {
           const SizedBox(height: 12),
           Text(message, textAlign: TextAlign.center, style: const TextStyle(color: AppConfig.textSecondary)),
           const SizedBox(height: 16),
-          FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh), label: const Text('Retry')),
+          FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh), label: Text(tr('Retry', 'إعادة المحاولة'))),
         ],
       ),
     );
@@ -473,7 +474,7 @@ class FavoriteButton extends StatelessWidget {
       onPressed: onPressed,
       icon: Icon(active ? Icons.star_rounded : Icons.star_outline_rounded,
           color: active ? AppConfig.accent : AppConfig.textPrimary),
-      label: Text(active ? 'Favorited' : 'Favorite',
+      label: Text(active ? tr('Favorited', 'في المفضلة') : tr('Favorite', 'أضف للمفضلة'),
           style: TextStyle(color: active ? AppConfig.accent : AppConfig.textPrimary)),
       style: ButtonStyle(
         minimumSize: const WidgetStatePropertyAll(Size(150, 50)),

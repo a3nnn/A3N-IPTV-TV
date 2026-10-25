@@ -40,6 +40,9 @@ class Storage {
   static List<String> pinned(String section) => _p.getStringList('pinned_$section') ?? const [];
   static Future<void> setPinned(String section, List<String> ids) => _p.setStringList('pinned_$section', ids);
 
+  static String? get language => _p.getString('language');
+  static Future<void> setLanguage(String code) => _p.setString('language', code);
+
   static double get volume => _p.getDouble('volume') ?? 100;
   static Future<void> setVolume(double v) => _p.setDouble('volume', v);
 

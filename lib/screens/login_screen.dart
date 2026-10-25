@@ -9,6 +9,7 @@ import '../widgets/brand.dart';
 import '../widgets/common.dart';
 import 'blocked_screen.dart';
 import 'home_screen.dart';
+import '../l10n.dart';
 
 class LoginScreen extends StatefulWidget {
   final String? initialError;
@@ -45,7 +46,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final u = _user.text.trim();
     final p = _pass.text.trim();
     if (u.isEmpty || p.isEmpty) {
-      setState(() => _error = 'Enter your username and password.');
+      setState(() => _error = tr('Enter your username and password.', 'اكتب اسم المستخدم وكلمة المرور.'));
       return;
     }
     setState(() {
@@ -116,9 +117,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       enabled: !_loading,
                       textInputAction: TextInputAction.next,
                       onSubmitted: (_) => _passFocus.requestFocus(),
-                      decoration: const InputDecoration(
-                        hintText: 'Username',
-                        prefixIcon: Icon(Icons.person_outline_rounded),
+                      decoration: InputDecoration(
+                        hintText: tr('Username', 'اسم المستخدم'),
+                        prefixIcon: const Icon(Icons.person_outline_rounded),
                       ),
                     ),
                     const SizedBox(height: 14),
@@ -129,7 +130,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       obscureText: _obscure,
                       onSubmitted: (_) => _submit(),
                       decoration: InputDecoration(
-                        hintText: 'Password',
+                        hintText: tr('Password', 'كلمة المرور'),
                         prefixIcon: const Icon(Icons.lock_outline_rounded),
                         suffixIcon: IconButton(
                           icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
@@ -152,7 +153,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 height: 22,
                                 child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.black),
                               )
-                            : const Text('Sign in'),
+                            : Text(tr('Sign in', 'تسجيل الدخول')),
                       ),
                     ),
                   ],

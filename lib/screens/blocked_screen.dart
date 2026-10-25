@@ -6,6 +6,7 @@ import '../data/storage.dart';
 import '../widgets/brand.dart';
 import '../widgets/common.dart';
 import 'start_gate.dart';
+import '../l10n.dart';
 
 /// Shown when you block this device or username from Supabase.
 class BlockedScreen extends StatefulWidget {
@@ -66,10 +67,10 @@ class _BlockedScreenState extends State<BlockedScreen> {
                   const SizedBox(height: 28),
                   const Icon(Icons.block_rounded, color: AppConfig.danger, size: 40),
                   const SizedBox(height: 14),
-                  const Text(
-                    'This app has been disabled on this device.',
+                  Text(
+                    tr('This app has been disabled on this device.', 'تم إيقاف التطبيق على هذا الجهاز.'),
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
                   ),
                   if (msg.isNotEmpty) ...[
                     const SizedBox(height: 12),
@@ -91,7 +92,7 @@ class _BlockedScreenState extends State<BlockedScreen> {
                               child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
                             )
                           : const Icon(Icons.refresh_rounded),
-                      label: const Text('Check again'),
+                      label: Text(tr('Check again', 'تحقق مرة ثانية')),
                     ),
                   ),
                 ],

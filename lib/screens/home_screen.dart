@@ -16,15 +16,24 @@ import 'blocked_screen.dart';
 import 'catalog_sections.dart';
 import 'live_section.dart';
 import 'settings_section.dart';
+import '../l10n.dart';
 
 class HomeScreen extends StatefulWidget {
+  /// Set when the language changes, so the app reopens on Settings.
+  static bool openSettingsNext = false;
+  static int takeStartIndex() {
+    final i = openSettingsNext ? 3 : 0;
+    openSettingsNext = false;
+    return i;
+  }
+
   const HomeScreen({super.key});
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _index = 0;
+  int _index = HomeScreen.takeStartIndex();
   // One key per section so the live section keeps its state when it
   // switches between normal and full-window layouts.
   final List<GlobalKey> _keys = List.generate(4, (_) => GlobalKey());
@@ -50,7 +59,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     _lastBack = now;
-    showToast(context, 'Press BACK again to exit');
+    showToast(context, tr('Press BACK again to exit', 'اضغط رجوع مرة ثانية للخروج'));
   }
 
   @override
@@ -173,7 +182,7 @@ class TopBar extends StatelessWidget {
           if (exp != null) ...[
             const Icon(Icons.event_available_rounded, size: 16, color: AppConfig.textSecondary),
             const SizedBox(width: 6),
-            Text('Expires ${fmtDate(exp)}', style: const TextStyle(fontSize: 13, color: AppConfig.textSecondary)),
+            Text(tr('Expires ${fmtDate(exp)}', 'ينتهي ${fmtDate(exp)}'), style: const TextStyle(fontSize: 13, color: AppConfig.textSecondary)),
             const SizedBox(width: 22),
           ],
           const ClockText(),
@@ -188,12 +197,12 @@ class NavRail extends StatelessWidget {
   final ValueChanged<int> onSelect;
   const NavRail({super.key, required this.index, required this.onSelect});
 
-  static const List<(IconData, String)> _items = [
-    (Icons.live_tv_rounded, 'Live TV'),
-    (Icons.movie_rounded, 'Movies'),
-    (Icons.video_library_rounded, 'Series'),
-    (Icons.settings_rounded, 'Settings'),
-  ];
+  static List<(IconData, String)> get _items => [
+        (Icons.live_tv_rounded, tr('Live TV', 'البث المباشر')),
+        (Icons.movie_rounded, tr('Movies', 'الأفلام')),
+        (Icons.video_library_rounded, tr('Series', 'المسلسلات')),
+        (Icons.settings_rounded, tr('Settings', 'الإعدادات')),
+      ];
 
   @override
   Widget build(BuildContext context) {

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../config.dart';
 import '../data/update_service.dart';
 import '../utils.dart';
+import '../l10n.dart';
 
 /// Optional update: "Later" closes, "Update" downloads and opens the installer.
 Future<void> showUpdateDialog(BuildContext context, UpdateInfo info) {
@@ -18,12 +19,12 @@ Future<void> showUpdateDialog(BuildContext context, UpdateInfo info) {
 /// Used by the "Check for updates" button in Settings.
 Future<void> checkForUpdatesManually(BuildContext context) async {
   final m = ScaffoldMessenger.maybeOf(context);
-  m?.showSnackBar(const SnackBar(content: Text('Checking for updates...'), duration: Duration(seconds: 2)));
+  m?.showSnackBar(SnackBar(content: Text(tr('Checking for updates...', 'جاري البحث عن تحديث...')), duration: const Duration(seconds: 2)));
   final info = await UpdateService.check();
   if (!context.mounted) return;
   m?.hideCurrentSnackBar();
   if (info == null) {
-    m?.showSnackBar(SnackBar(content: Text('You have the latest version (${AppConfig.version}).')));
+    m?.showSnackBar(SnackBar(content: Text(tr('You have the latest version (${AppConfig.version}).', 'عندك آخر نسخة (${AppConfig.version}).'))));
     return;
   }
   await showUpdateDialog(context, info);
@@ -100,7 +101,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
       if (!mounted) return;
       setState(() {
         _phase = _Phase.error;
-        _error = 'Could not download the update. Check your internet and try again.';
+        _error = tr('Could not download the update. Check your internet and try again.', 'ما قدرنا ننزّل التحديث. تأكد من الإنترنت وحاول مرة ثانية.');
       });
     }
   }
@@ -122,7 +123,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
           children: [
             const Icon(Icons.system_update_rounded, color: AppConfig.primary),
             const SizedBox(width: 12),
-            Text('Update available  ·  ${info.version}'),
+            Text(tr('Update available  ·  ${info.version}', 'تحديث جديد  ·  ${info.version}')),
           ],
         ),
         content: SizedBox(
@@ -132,7 +133,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'You have ${AppConfig.version}.${info.size > 0 ? '  Download size: ${_mb(info.size)}.' : ''}',
+                '${tr('You have', 'نسختك الحالية')} ${AppConfig.version}.${info.size > 0 ? '  ${tr('Download size', 'حجم التحميل')}: ${_mb(info.size)}.' : ''}',
                 style: const TextStyle(color: AppConfig.textSecondary),
               ),
               if (info.notes.isNotEmpty && _phase == _Phase.ask) ...[
@@ -153,11 +154,11 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Text(_progress < 0 ? 'Downloading...' : 'Downloading...  ${(_progress * 100).toStringAsFixed(0)}%'),
+                Text(_progress < 0 ? tr('Downloading...', 'جاري التحميل...') : '${tr('Downloading...', 'جاري التحميل...')}  ${(_progress * 100).toStringAsFixed(0)}%'),
               ],
               if (_phase == _Phase.installing) ...[
                 const SizedBox(height: 18),
-                const Text('Opening the installer... press Install on the next screen.'),
+                Text(tr('Opening the installer... press Install on the next screen.', 'جاري فتح التثبيت... اضغط Install في الشاشة الجاية.')),
               ],
               if (_phase == _Phase.error && _error != null) ...[
                 const SizedBox(height: 14),
@@ -171,14 +172,14 @@ class _UpdateDialogState extends State<_UpdateDialog> {
             : [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Later'),
+                  child: Text(tr('Later', 'لاحقاً')),
                 ),
                 FilledButton.icon(
                   autofocus: true,
                   focusNode: _updateBtn,
                   onPressed: _update,
                   icon: const Icon(Icons.download_rounded),
-                  label: Text(_phase == _Phase.error ? 'Try again' : 'Update'),
+                  label: Text(_phase == _Phase.error ? tr('Try again', 'حاول مرة ثانية') : tr('Update', 'تحديث')),
                 ),
               ],
       ),

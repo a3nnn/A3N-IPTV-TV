@@ -13,6 +13,7 @@ import '../utils.dart';
 import '../widgets/category_panel.dart';
 import '../widgets/common.dart';
 import '../widgets/stream_info.dart';
+import '../l10n.dart';
 
 const String _favId = '__fav';
 const String _allId = '__all';
@@ -339,9 +340,9 @@ class _LiveSectionState extends State<LiveSection> {
       onSelect: _selectCategory,
       entries: [
         CategoryEntry(
-            id: _favId, name: 'Favorites', count: favCount, fixed: true,
+            id: _favId, name: tr('Favorites', 'المفضلة'), count: favCount, fixed: true,
             icon: Icons.star_rounded, iconColor: AppConfig.accent),
-        CategoryEntry(id: _allId, name: 'All Channels', count: _all.length, fixed: true),
+        CategoryEntry(id: _allId, name: tr('All Channels', 'كل القنوات'), count: _all.length, fixed: true),
         ..._categories.map((c) => CategoryEntry(id: c.id, name: c.name, count: _counts[c.id] ?? 0)),
       ],
     );
@@ -353,7 +354,7 @@ class _LiveSectionState extends State<LiveSection> {
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
           child: TvSearchButton(
-            hint: 'Search channels',
+            hint: tr('Search channels', 'ابحث في القنوات'),
             controller: _searchCtrl,
             onChanged: (v) => setState(() {
               _query = v;
@@ -366,8 +367,8 @@ class _LiveSectionState extends State<LiveSection> {
               ? Center(
                   child: Text(
                     _categoryId == _favId
-                        ? 'No favorites yet.\nHold OK on a channel to add it.'
-                        : 'No channels found',
+                        ? tr('No favorites yet.\nHold OK on a channel to add it.', 'ما فيه مفضلة للحين.\nاضغط مطوّل على OK فوق القناة عشان تضيفها.')
+                        : tr('No channels found', 'لا توجد قنوات'),
                     textAlign: TextAlign.center,
                     style: const TextStyle(color: AppConfig.textSecondary),
                   ),
@@ -428,11 +429,11 @@ class _LiveSectionState extends State<LiveSection> {
       subtitle: selected ? _now?.title : null,
       onLongPress: () {
         _toggleFavorite(c);
-        showToast(context, _favorites.contains(c.id) ? '★  ${c.name} added to favorites' : '${c.name} removed from favorites');
+        showToast(context, _favorites.contains(c.id) ? tr('★  ${c.name} added to favorites', '★  تمت إضافة ${c.name} للمفضلة') : tr('${c.name} removed from favorites', 'تمت إزالة ${c.name} من المفضلة'));
       },
       trailing: fav
           ? const Padding(
-              padding: EdgeInsets.only(right: 10),
+              padding: EdgeInsetsDirectional.only(end: 10),
               child: Icon(Icons.star_rounded, size: 18, color: AppConfig.accent),
             )
           : null,
@@ -505,18 +506,18 @@ class _LiveSectionState extends State<LiveSection> {
           children: [
             ChannelLogo(url: ch.logo, size: 72),
             const SizedBox(height: 12),
-            const Text('Press OK to watch', style: TextStyle(color: AppConfig.textSecondary)),
+            Text(tr('Press OK to watch', 'اضغط OK للمشاهدة'), style: const TextStyle(color: AppConfig.textSecondary)),
           ],
         ),
       );
 
-  Widget _emptyPreview() => const Center(
+  Widget _emptyPreview() => Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.live_tv_rounded, size: 48, color: AppConfig.textSecondary),
-            SizedBox(height: 10),
-            Text('Select a channel', style: TextStyle(color: AppConfig.textSecondary)),
+            const Icon(Icons.live_tv_rounded, size: 48, color: AppConfig.textSecondary),
+            const SizedBox(height: 10),
+            Text(tr('Select a channel', 'اختر قناة'), style: const TextStyle(color: AppConfig.textSecondary)),
           ],
         ),
       );
@@ -538,7 +539,7 @@ class _LiveSectionState extends State<LiveSection> {
               children: [
                 RoundIconButton(
                   icon: Icons.fullscreen_rounded,
-                  tooltip: 'Full screen',
+                  tooltip: tr('Full screen', 'ملء الشاشة'),
                   onTap: () => _setFullscreen(true),
                 ),
               ],
@@ -560,14 +561,14 @@ class _LiveSectionState extends State<LiveSection> {
   Widget _buildEpg() {
     if (_epgLoading) {
       return const Align(
-        alignment: Alignment.topLeft,
+        alignment: AlignmentDirectional.topStart,
         child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
       );
     }
     final now = _now;
     final next = _upcoming;
     if (now == null && next.isEmpty) {
-      return const Text('No program guide for this channel', style: TextStyle(color: AppConfig.textSecondary));
+      return Text(tr('No program guide for this channel', 'لا يوجد دليل برامج لهذه القناة'), style: const TextStyle(color: AppConfig.textSecondary));
     }
     return ListView(
       children: [
@@ -617,13 +618,15 @@ class _LiveSectionState extends State<LiveSection> {
                             ),
                           ),
                           child: Row(
+                            // Quality badge stays top-left in both languages.
+                            textDirection: TextDirection.ltr,
                             children: [
                               StreamInfoBadge(show: _overlay),
                               const Spacer(),
                               const ClockText(),
                               const SizedBox(width: 18),
                               Text(
-                                '▲ ▼  channel     OK  info     BACK  exit',
+                                tr('▲ ▼  channel     OK  info     BACK  exit', '▲ ▼  القناة     OK  المعلومات     رجوع  خروج'),
                                 style: TextStyle(fontSize: 12, color: fade(Colors.white, 0.6)),
                               ),
                             ],
@@ -682,7 +685,7 @@ class _LiveSectionState extends State<LiveSection> {
                                       if (next.isNotEmpty) ...[
                                         const SizedBox(height: 8),
                                         Text(
-                                          'Next  ${fmtTime(next.first.start)}   ${next.first.title}',
+                                          '${tr('Next', 'التالي')}  ${fmtTime(next.first.start)}   ${next.first.title}',
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(fontSize: 13, color: fade(Colors.white, 0.7)),
@@ -729,7 +732,7 @@ class _NowCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(color: AppConfig.primary, borderRadius: BorderRadius.circular(4)),
-                child: const Text('NOW',
+                child: Text(tr('NOW', 'الآن'),
                     style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.black)),
               ),
               const SizedBox(width: 10),

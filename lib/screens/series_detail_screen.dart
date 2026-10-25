@@ -8,6 +8,7 @@ import '../utils.dart';
 import '../widgets/common.dart';
 import 'home_screen.dart';
 import 'player_page.dart';
+import '../l10n.dart';
 
 class SeriesDetailScreen extends StatefulWidget {
   final Series series;
@@ -77,7 +78,7 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
           TopBar(
             title: s.name,
             leading: IconButton(
-              tooltip: 'Back',
+              tooltip: tr('Back', 'رجوع'),
               icon: const Icon(Icons.arrow_back_rounded),
               onPressed: () => Navigator.of(context).maybePop(),
             ),
@@ -139,7 +140,7 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
         const VerticalDivider(width: 1),
         Expanded(
           child: info.seasons.isEmpty
-              ? const Center(child: Text('No episodes available', style: TextStyle(color: AppConfig.textSecondary)))
+              ? Center(child: Text(tr('No episodes available', 'لا توجد حلقات'), style: const TextStyle(color: AppConfig.textSecondary)))
               : Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -151,7 +152,7 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
                         children: [
                           for (final season in info.seasons.keys)
                             ChoiceChip(
-                              label: Text('Season $season'),
+                              label: Text(tr('Season $season', 'الموسم $season')),
                               selected: season == _season,
                               onSelected: (_) => setState(() => _season = season),
                               selectedColor: fade(AppConfig.primary, 0.25),
@@ -217,7 +218,7 @@ class _EpisodeTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Episode ${e.episodeNum}${e.title.isNotEmpty ? '  ·  ${e.title}' : ''}',
+                    '${tr('Episode', 'الحلقة')} ${e.episodeNum}${e.title.isNotEmpty ? '  ·  ${e.title}' : ''}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
