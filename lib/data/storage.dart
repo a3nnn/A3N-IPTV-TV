@@ -40,6 +40,20 @@ class Storage {
   static List<String> pinned(String section) => _p.getStringList('pinned_$section') ?? const [];
   static Future<void> setPinned(String section, List<String> ids) => _p.setStringList('pinned_$section', ids);
 
+  /// Last section opened from the start menu (0 live, 1 movies, 2 series, 3 settings).
+  static int get lastSection => _p.getInt('last_section') ?? 0;
+  static Future<void> setLastSection(int i) => _p.setInt('last_section', i);
+
+  /// Watch progress of movies / episodes (JSON, see WatchHistory).
+  static String? get watchJson => _p.getString('watch_history');
+  static Future<void> setWatchJson(String v) => _p.setString('watch_history', v);
+
+  /// Last category / last opened poster per section ('movies', 'series').
+  static String? lastCatalogCategory(String section) => _p.getString('last_cat_$section');
+  static Future<void> setLastCatalogCategory(String section, String id) => _p.setString('last_cat_$section', id);
+  static int? lastCatalogItem(String section) => _p.getInt('last_item_$section');
+  static Future<void> setLastCatalogItem(String section, int id) => _p.setInt('last_item_$section', id);
+
   static String? get language => _p.getString('language');
   static Future<void> setLanguage(String code) => _p.setString('language', code);
 

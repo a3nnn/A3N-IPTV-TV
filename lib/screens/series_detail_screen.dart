@@ -7,7 +7,8 @@ import '../data/xtream_api.dart';
 import '../utils.dart';
 import '../widgets/common.dart';
 import 'home_screen.dart';
-import 'player_page.dart';
+import '../data/watch_history.dart';
+import 'playback.dart';
 import '../l10n.dart';
 
 class SeriesDetailScreen extends StatefulWidget {
@@ -24,6 +25,18 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
   SeriesInfo? _info;
   int? _season;
   late bool _fav = Storage.favSeries.contains(widget.series.id);
+
+  // Opens on the last episode watched (or the first one).
+  final ScrollController _listScroll = ScrollController();
+  final FocusNode _targetNode = FocusNode();
+  String? _targetEpisode;
+
+  @override
+  void dispose() {
+    _listScroll.dispose();
+    _targetNode.dispose();
+    super.dispose();
+  }
 
   Future<void> _toggleFav() async {
     final added = await Storage.toggleFav('fav_series', widget.series.id);
@@ -44,11 +57,27 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
     try {
       final info = await Session.api!.seriesInfo(widget.series.id);
       if (!mounted) return;
+      final last = WatchHistory.lastOfSeries(widget.series.id);
+      int? season = info.seasons.keys.isEmpty ? null : info.seasons.keys.first;
+      String? target;
+      if (last != null) {
+        for (final entry in info.seasons.entries) {
+          final list = entry.value;
+          final i = list.indexWhere((e) => e.id == last.id);
+          if (i < 0) continue;
+          season = entry.key;
+          // Finished it? Then the next episode is the one to watch.
+          target = (last.done && i + 1 < list.length) ? list[i + 1].id : list[i].id;
+          break;
+        }
+      }
       setState(() {
         _info = info;
-        _season = info.seasons.keys.isEmpty ? null : info.seasons.keys.first;
+        _season = season;
+        _targetEpisode = target;
         _loading = false;
       });
+      if (target != null) WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToTarget());
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -58,15 +87,29 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
     }
   }
 
-  void _play(Episode e) {
-    final api = Session.api!;
-    final label = 'S${two(e.season)}E${two(e.episodeNum)}';
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => PlayerPage(
-        url: api.episodeUrl(e),
-        title: '${widget.series.name}  ·  $label${e.title.isNotEmpty ? '  ·  ${e.title}' : ''}',
-      ),
-    ));
+  void _scrollToTarget() {
+    final id = _targetEpisode;
+    final eps = _info?.seasons[_season] ?? const <Episode>[];
+    final i = eps.indexWhere((e) => e.id == id);
+    if (i < 0 || !mounted) return;
+    if (_listScroll.hasClients) {
+      final pos = _listScroll.position;
+      pos.jumpTo((8 + i * 109.0 - 120).clamp(0.0, pos.maxScrollExtent));
+    }
+    void focus(int n) {
+      if (!mounted) return;
+      if (_targetNode.context != null) {
+        _targetNode.requestFocus();
+      } else if (n < 5) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => focus(n + 1));
+      }
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) => focus(0));
+  }
+
+  Future<void> _play(Episode e) async {
+    await playEpisode(context, widget.series, e);
+    if (mounted) setState(() {}); // refresh the watched marks
   }
 
   @override
@@ -166,10 +209,16 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
                     Expanded(
                       child: StayInList(
                         child: ListView.separated(
+                        controller: _listScroll,
                         padding: const EdgeInsets.symmetric(vertical: 8),
                         itemCount: episodes.length,
                         separatorBuilder: (_, __) => const Divider(height: 1, indent: 24, endIndent: 24),
-                        itemBuilder: (context, i) => _EpisodeTile(episode: episodes[i], autofocus: i == 0, onTap: () => _play(episodes[i])),
+                        itemBuilder: (context, i) => _EpisodeTile(
+                          episode: episodes[i],
+                          autofocus: _targetEpisode == null && i == 0,
+                          focusNode: episodes[i].id == _targetEpisode ? _targetNode : null,
+                          onTap: () => _play(episodes[i]),
+                        ),
                       ),
                       ),
                     ),
@@ -185,14 +234,17 @@ class _EpisodeTile extends StatelessWidget {
   final Episode episode;
   final VoidCallback onTap;
   final bool autofocus;
-  const _EpisodeTile({required this.episode, required this.onTap, this.autofocus = false});
+  final FocusNode? focusNode;
+  const _EpisodeTile({required this.episode, required this.onTap, this.autofocus = false, this.focusNode});
 
   @override
   Widget build(BuildContext context) {
     final e = episode;
+    final w = WatchHistory.get(WatchHistory.episodeKey(e.id));
     return InkWell(
       onTap: onTap,
       autofocus: autofocus,
+      focusNode: focusNode,
       hoverColor: fade(AppConfig.textPrimary, 0.05),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
@@ -209,6 +261,8 @@ class _EpisodeTile extends StatelessWidget {
                 children: [
                   NetImage(url: e.image, fallbackIcon: Icons.play_circle_outline_rounded, cacheWidth: 300),
                   const Center(child: Icon(Icons.play_arrow_rounded, color: Colors.white70, size: 34)),
+                  if (w != null && w.resumable)
+                    Positioned(left: 0, right: 0, bottom: 0, child: WatchProgressBar(fraction: w.fraction)),
                 ],
               ),
             ),
@@ -217,11 +271,21 @@ class _EpisodeTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    '${tr('Episode', 'الحلقة')} ${e.episodeNum}${e.title.isNotEmpty ? '  ·  ${e.title}' : ''}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          '${tr('Episode', 'الحلقة')} ${e.episodeNum}${e.title.isNotEmpty ? '  ·  ${e.title}' : ''}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      if (w != null && w.done) ...[
+                        const SizedBox(width: 10),
+                        const WatchedBadge(),
+                      ],
+                    ],
                   ),
                   if (e.plot.isNotEmpty) ...[
                     const SizedBox(height: 6),

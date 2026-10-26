@@ -7,7 +7,8 @@ import '../data/xtream_api.dart';
 import '../utils.dart';
 import '../widgets/category_panel.dart';
 import '../widgets/common.dart';
-import 'player_page.dart';
+import '../data/watch_history.dart';
+import 'playback.dart';
 import 'series_detail_screen.dart';
 import '../l10n.dart';
 
@@ -22,7 +23,11 @@ class CatalogItem {
   final double rating;
   final Future<void> Function(BuildContext context) onOpen;
 
+  /// true = series (progress comes from its latest episode).
+  final bool isSeries;
+
   const CatalogItem({
+    this.isSeries = false,
     required this.id,
     required this.title,
     required this.image,
@@ -57,9 +62,7 @@ class MoviesSection extends StatelessWidget {
                 image: m.poster,
                 categoryId: m.categoryId,
                 rating: m.rating,
-                onOpen: (ctx) => Navigator.of(ctx).push(
-                  MaterialPageRoute(builder: (_) => PlayerPage(url: api.movieUrl(m), title: m.name)),
-                ),
+                onOpen: (ctx) => playMovie(ctx, m),
               ))
           .toList(),
     );
@@ -89,6 +92,7 @@ class SeriesSection extends StatelessWidget {
                 image: s.cover,
                 categoryId: s.categoryId,
                 rating: s.rating,
+                isSeries: true,
                 onOpen: (ctx) => Navigator.of(ctx).push(
                   MaterialPageRoute(builder: (_) => SeriesDetailScreen(series: s)),
                 ),
@@ -139,6 +143,7 @@ class _CatalogSectionState extends State<CatalogSection> {
   void dispose() {
     _searchCtrl.dispose();
     _gridScroll.dispose();
+    _targetNode.dispose();
     super.dispose();
   }
 
@@ -159,8 +164,9 @@ class _CatalogSectionState extends State<CatalogSection> {
         _counts = counts;
         _refreshFavs();
         _loading = false;
-        _applyFilter();
+        _restoreLastPlace();
       });
+      if (_focusItemId != null) WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToTarget());
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -181,7 +187,54 @@ class _CatalogSectionState extends State<CatalogSection> {
     _favCount = _data.items.where((i) => _favs.contains(i.id)).length;
   }
 
+  // ------------------------------------------------ back to the last place
+
+  /// Poster to put the remote's focus on when the section opens.
+  int? _focusItemId;
+  final FocusNode _targetNode = FocusNode();
+  double _gridWidth = 800;
+
+  void _restoreLastPlace() {
+    final cat = Storage.lastCatalogCategory(widget.section);
+    if (cat != null && (cat == _allId || cat == _favId || _data.categories.any((c) => c.id == cat))) {
+      _categoryId = cat;
+    }
+    _applyFilter();
+    final last = Storage.lastCatalogItem(widget.section);
+    _focusItemId = (last != null && _visible.any((i) => i.id == last)) ? last : null;
+  }
+
+  /// Scrolls the grid to the last opened poster and focuses it.
+  void _scrollToTarget({int attempt = 0}) {
+    final id = _focusItemId;
+    if (id == null || !mounted) return;
+    if (!_gridScroll.hasClients) {
+      if (attempt < 5) WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToTarget(attempt: attempt + 1));
+      return;
+    }
+    final index = _visible.indexWhere((i) => i.id == id);
+    if (index < 0) return;
+    // Same maths as SliverGridDelegateWithMaxCrossAxisExtent below.
+    final w = (_gridWidth - 40).clamp(100.0, 10000.0);
+    final cols = (w / (180 + 16)).ceil().clamp(1, 100);
+    final cellW = (w - 16 * (cols - 1)) / cols;
+    final rowH = cellW / 0.56 + 18;
+    final row = index ~/ cols;
+    final pos = _gridScroll.position;
+    pos.jumpTo((row * rowH - rowH * 0.6).clamp(0.0, pos.maxScrollExtent));
+    void focus(int n) {
+      if (!mounted) return;
+      if (_targetNode.context != null) {
+        _targetNode.requestFocus();
+      } else if (n < 5) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => focus(n + 1));
+      }
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) => focus(0));
+  }
+
   Future<void> _open(CatalogItem item) async {
+    Storage.setLastCatalogItem(widget.section, item.id);
     await item.onOpen(context);
     // Favorites may have changed on the series screen.
     if (!mounted) return;
@@ -217,6 +270,8 @@ class _CatalogSectionState extends State<CatalogSection> {
   }
 
   void _selectCategory(String id) {
+    Storage.setLastCatalogCategory(widget.section, id);
+    _focusItemId = null;
     setState(() {
       _categoryId = id;
       _applyFilter();
@@ -236,6 +291,7 @@ class _CatalogSectionState extends State<CatalogSection> {
           width: (MediaQuery.sizeOf(context).width * 0.22).clamp(180.0, 250.0),
           child: CategoryPanel(
             section: widget.section,
+            autofocusSelected: _focusItemId == null,
             selectedId: _categoryId,
             onSelect: _selectCategory,
             entries: [
@@ -278,7 +334,9 @@ class _CatalogSectionState extends State<CatalogSection> {
                           style: const TextStyle(color: AppConfig.textSecondary),
                         ),
                       )
-                    : Scrollbar(
+                    : LayoutBuilder(builder: (context, box) {
+                        _gridWidth = box.maxWidth;
+                        return Scrollbar(
                         controller: _gridScroll,
                         child: StayInList(
                           child: GridView.builder(
@@ -296,6 +354,7 @@ class _CatalogSectionState extends State<CatalogSection> {
                             final item = _visible[i];
                             return PosterCard(
                               item: item,
+                              focusNode: item.id == _focusItemId ? _targetNode : null,
                               favorite: favs.contains(item.id),
                               onOpen: () => _open(item),
                               onLongPress: () => _toggleFav(item),
@@ -303,7 +362,8 @@ class _CatalogSectionState extends State<CatalogSection> {
                           },
                         ),
                         ),
-                      ),
+                      );
+                      }),
               ),
             ],
           ),
@@ -319,7 +379,9 @@ class PosterCard extends StatefulWidget {
   final VoidCallback onLongPress;
   final bool favorite;
   final bool autofocus;
+  final FocusNode? focusNode;
   const PosterCard({
+    this.focusNode,
     super.key,
     required this.item,
     required this.onOpen,
@@ -350,6 +412,7 @@ class _PosterCardState extends State<PosterCard> {
         onTap: widget.onOpen,
         onLongPress: widget.onLongPress,
         autofocus: widget.autofocus,
+        focusNode: widget.focusNode,
         onFocusChange: (f) => setState(() => _focus = f),
         focusColor: Colors.transparent,
         hoverColor: Colors.transparent,
@@ -378,6 +441,7 @@ class _PosterCardState extends State<PosterCard> {
                     fit: StackFit.expand,
                     children: [
                       NetImage(url: item.image, fallbackIcon: Icons.movie_outlined, cacheWidth: 300),
+                      ..._watchMarks(item),
                       if (widget.favorite)
                         const Positioned(
                           top: 6,
@@ -428,4 +492,16 @@ class _PosterCardState extends State<PosterCard> {
     ),
     );
   }
+}
+
+/// ✓ when finished, or a thin bar showing how far it was watched.
+List<Widget> _watchMarks(CatalogItem item) {
+  final e = item.isSeries ? WatchHistory.lastOfSeries(item.id) : WatchHistory.get(WatchHistory.movieKey(item.id));
+  if (e == null) return const [];
+  return [
+    if (!item.isSeries && e.done)
+      const PositionedDirectional(bottom: 6, start: 6, child: WatchedBadge()),
+    if (e.resumable || (item.isSeries && !e.done && e.fraction > 0))
+      Positioned(left: 0, right: 0, bottom: 0, child: WatchProgressBar(fraction: e.fraction)),
+  ];
 }

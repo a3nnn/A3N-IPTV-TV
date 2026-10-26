@@ -7,6 +7,7 @@ import 'config.dart';
 import 'l10n.dart';
 import 'data/disk_cache.dart';
 import 'data/storage.dart';
+import 'data/watch_history.dart';
 import 'screens/start_gate.dart';
 import 'theme.dart';
 import 'widgets/common.dart';
@@ -21,6 +22,7 @@ Future<void> main() async {
     if (RegExp(r'^\d+\.\d+').hasMatch(info.version)) AppConfig.version = info.version;
   } catch (_) {}
   L.init();
+  WatchHistory.init();
   // Saved posters / lists on the TV (doesn't hold up the start).
   DiskCache.init();
 

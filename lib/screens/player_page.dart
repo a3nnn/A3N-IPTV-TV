@@ -6,6 +6,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../config.dart';
+import '../data/watch_history.dart';
 import '../player/player_service.dart';
 import '../utils.dart';
 import '../widgets/stream_info.dart';
@@ -16,7 +17,13 @@ import '../l10n.dart';
 class PlayerPage extends StatefulWidget {
   final String url;
   final String title;
-  const PlayerPage({super.key, required this.url, required this.title});
+
+  /// Movie / episode being watched (to remember where it stopped).
+  final WatchEntry? watch;
+
+  /// Jump here once the video is ready ("continue watching").
+  final Duration startAt;
+  const PlayerPage({super.key, required this.url, required this.title, this.watch, this.startAt = Duration.zero});
 
   @override
   State<PlayerPage> createState() => _PlayerPageState();
@@ -34,17 +41,59 @@ class _PlayerPageState extends State<PlayerPage> {
   Duration? _seekTarget;
   Timer? _seekTimer;
 
+  // Continue watching / saving the position.
+  StreamSubscription<Duration>? _durSub;
+  Timer? _saveTimer;
+  bool _started = false; // the jump to [startAt] was done (or not needed)
+
   @override
   void initState() {
     super.initState();
+    _started = widget.startAt <= Duration.zero;
     _svc.play(widget.url);
+    if (!_started) {
+      _seekTarget = widget.startAt; // the bar shows the target right away
+      _durSub = _svc.player.stream.duration.listen((d) {
+        if (d > Duration.zero) _jumpToStart();
+      });
+    }
+    if (widget.watch != null) {
+      _saveTimer = Timer.periodic(const Duration(seconds: 10), (_) => _savePosition());
+    }
     _poke();
+  }
+
+  Future<void> _jumpToStart() async {
+    if (_started) return;
+    _started = true;
+    _durSub?.cancel();
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    if (!mounted) return;
+    try {
+      await _svc.player.seek(widget.startAt);
+    } catch (_) {}
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    if (mounted && _seekTimer?.isActive != true) setState(() => _seekTarget = null);
+  }
+
+  void _savePosition() {
+    final w = widget.watch;
+    if (w == null || !_started) return;
+    final st = _svc.player.state;
+    final pos = (_seekTarget ?? st.position).inSeconds;
+    final dur = st.duration.inSeconds;
+    if (dur <= 0) return;
+    WatchHistory.report(w, pos, dur);
   }
 
   @override
   void dispose() {
+    _savePosition();
+    WatchHistory.saveNow();
     _hideTimer?.cancel();
     _seekTimer?.cancel();
+    _saveTimer?.cancel();
+    _durSub?.cancel();
     _focus.dispose();
     _svc.stop();
     super.dispose();

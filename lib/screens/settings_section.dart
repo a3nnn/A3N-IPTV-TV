@@ -67,7 +67,7 @@ class _SettingsSectionState extends State<SettingsSection> {
         _Card(
           title: tr('Language', 'اللغة'),
           children: [
-            _LangOption(label: 'العربية', selected: L.isAr, onTap: () => _setLanguage(true)),
+            _LangOption(label: 'العربية', selected: L.isAr, autofocus: true, onTap: () => _setLanguage(true)),
             _LangOption(label: 'English', selected: !L.isAr, onTap: () => _setLanguage(false)),
           ],
         ),
@@ -249,12 +249,14 @@ class _LangOption extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
-  const _LangOption({required this.label, required this.selected, required this.onTap});
+  final bool autofocus;
+  const _LangOption({required this.label, required this.selected, required this.onTap, this.autofocus = false});
 
   @override
   Widget build(BuildContext context) {
     return ListTile(
       dense: true,
+      autofocus: autofocus,
       selected: selected,
       selectedColor: AppConfig.primary,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),

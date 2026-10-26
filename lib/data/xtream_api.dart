@@ -178,4 +178,6 @@ class XtreamApi {
   String liveUrl(LiveChannel c) => '$host/live/$_u/$_p/${c.id}.${AppConfig.liveFormat}';
   String movieUrl(Movie m) => '$host/movie/$_u/$_p/${m.id}.${m.ext}';
   String episodeUrl(Episode e) => '$host/series/$_u/$_p/${e.id}.${e.ext}';
+  String vodUrl(String id, String ext) => '$host/movie/$_u/$_p/$id.$ext';
+  String seriesEpisodeUrl(String id, String ext) => '$host/series/$_u/$_p/$id.$ext';
 }

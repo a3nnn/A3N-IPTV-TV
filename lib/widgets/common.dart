@@ -626,3 +626,48 @@ class StayInList extends StatelessWidget {
         child: child,
       );
 }
+
+/// Thin bar at the bottom of a poster / thumbnail: how much was watched.
+class WatchProgressBar extends StatelessWidget {
+  final double fraction;
+  const WatchProgressBar({super.key, required this.fraction});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        height: 5,
+        color: fade(Colors.black, 0.55),
+        alignment: AlignmentDirectional.centerStart,
+        child: FractionallySizedBox(
+          widthFactor: fraction.clamp(0.03, 1.0),
+          heightFactor: 1,
+          child: const ColoredBox(color: AppConfig.primary),
+        ),
+      );
+}
+
+/// "✓ Watched" mark.
+class WatchedBadge extends StatelessWidget {
+  final bool compact;
+  const WatchedBadge({super.key, this.compact = false});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: EdgeInsets.symmetric(horizontal: compact ? 5 : 7, vertical: 3),
+        decoration: BoxDecoration(
+          color: fade(Colors.black, 0.72),
+          borderRadius: BorderRadius.circular(5),
+          border: Border.all(color: fade(AppConfig.primary, 0.7)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.check_rounded, size: 14, color: AppConfig.primary),
+            if (!compact) ...[
+              const SizedBox(width: 3),
+              Text(tr('Watched', 'تمت المشاهدة'),
+                  style: const TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.w600)),
+            ],
+          ],
+        ),
+      );
+}

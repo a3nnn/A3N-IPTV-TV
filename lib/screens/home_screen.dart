@@ -16,13 +16,15 @@ import 'blocked_screen.dart';
 import 'catalog_sections.dart';
 import 'live_section.dart';
 import 'settings_section.dart';
+import 'start_menu.dart';
 import '../l10n.dart';
 
 class HomeScreen extends StatefulWidget {
   /// Set when the language changes, so the app reopens on Settings.
   static bool openSettingsNext = false;
+  /// -1 = the start menu.
   static int takeStartIndex() {
-    final i = openSettingsNext ? 3 : 0;
+    final i = openSettingsNext ? 3 : -1;
     openSettingsNext = false;
     return i;
   }
@@ -40,7 +42,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Timer? _licenseTimer;
   DateTime? _lastBack;
 
-  /// BACK on the main screen: full screen -> list, other tab -> Live TV,
+  /// BACK on the main screen: full screen -> list, a section -> start menu,
   /// and only a second BACK within 2 seconds closes the app.
   void _onBack(bool didPop, Object? _) {
     if (didPop) return;
@@ -49,8 +51,8 @@ class _HomeScreenState extends State<HomeScreen> {
       svc.exitFullscreen.value++;
       return;
     }
-    if (_index != 0) {
-      _go(0);
+    if (_index != -1) {
+      _go(-1);
       return;
     }
     final now = DateTime.now();
@@ -103,6 +105,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _go(int i) {
     if (i == _index) return;
     if (_index == 0) PlayerService.instance.stop();
+    if (i >= 0) Storage.setLastSection(i);
     setState(() => _index = i);
   }
 
@@ -127,6 +130,16 @@ class _HomeScreenState extends State<HomeScreen> {
       child: ValueListenableBuilder<bool>(
       valueListenable: PlayerService.instance.fullscreen,
       builder: (context, fullscreen, _) {
+        if (_index < 0) {
+          return Scaffold(
+            body: Column(
+              children: [
+                const TopBar(),
+                Expanded(child: StartMenu(onSelect: _go)),
+              ],
+            ),
+          );
+        }
         final section = KeyedSubtree(key: _keys[_index], child: _section());
         if (fullscreen) {
           return Scaffold(backgroundColor: Colors.black, body: section);

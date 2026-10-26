@@ -137,6 +137,12 @@ class _LiveSectionState extends State<LiveSection> {
     }
     if (channel != null) {
       _select(channel, scroll: true, play: Storage.previewEnabled);
+      // Put the remote's focus on that channel (coming from the start menu).
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) setState(() => _refocusTick++);
+        });
+      });
     } else {
       setState(() {});
     }
