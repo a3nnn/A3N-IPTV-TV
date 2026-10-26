@@ -7,6 +7,7 @@ import '../data/xtream_api.dart';
 import '../player/player_service.dart';
 import '../utils.dart';
 import '../widgets/brand.dart';
+import '../widgets/common.dart';
 import '../widgets/sub_style.dart';
 import '../widgets/update_dialog.dart';
 import 'home_screen.dart';
@@ -95,7 +96,11 @@ class _SettingsSectionState extends State<SettingsSection> {
                 onPressed: () => _logout(context),
                 icon: const Icon(Icons.logout_rounded, color: AppConfig.danger),
                 label: Text(tr('Sign out', 'تسجيل الخروج'), style: const TextStyle(color: AppConfig.danger)),
-                style: OutlinedButton.styleFrom(side: const BorderSide(color: AppConfig.danger)),
+                style: ButtonStyle(
+                  side: WidgetStateProperty.resolveWith((st) => st.contains(WidgetState.focused)
+                      ? const BorderSide(color: AppConfig.textPrimary, width: 2.5)
+                      : const BorderSide(color: AppConfig.danger)),
+                ),
               ),
             ),
           ],
@@ -246,13 +251,15 @@ class _SwitchRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SwitchListTile(
+    return FocusRing(
+      child: SwitchListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 8),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
       subtitle: Text(subtitle, style: const TextStyle(fontSize: 12, color: AppConfig.textSecondary)),
       value: value,
       onChanged: onChanged,
+    ),
     );
   }
 }
@@ -286,7 +293,8 @@ class _LangOption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
+    return FocusRing(
+      child: ListTile(
       dense: true,
       autofocus: autofocus,
       selected: selected,
@@ -295,6 +303,7 @@ class _LangOption extends StatelessWidget {
       leading: Icon(selected ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded, size: 22),
       title: Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
       onTap: onTap,
+    ),
     );
   }
 }

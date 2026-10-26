@@ -10,6 +10,7 @@ import '../data/storage.dart';
 import '../data/watch_history.dart';
 import '../player/player_service.dart';
 import '../utils.dart';
+import '../widgets/common.dart';
 import '../widgets/stream_info.dart';
 import '../widgets/sub_style.dart';
 import '../l10n.dart';
@@ -426,7 +427,9 @@ class _TracksDialogState extends State<_TracksDialog> {
       required VoidCallback onTap,
       bool autofocus = false,
     }) {
-      return ListTile(
+      return FocusRing(
+        radius: 8,
+        child: ListTile(
         dense: true,
         autofocus: autofocus,
         selected: selected,
@@ -435,6 +438,7 @@ class _TracksDialogState extends State<_TracksDialog> {
         leading: Icon(selected ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded, size: 20),
         title: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
         onTap: onTap,
+      ),
       );
     }
 

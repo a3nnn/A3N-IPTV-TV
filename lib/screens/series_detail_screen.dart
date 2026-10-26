@@ -194,13 +194,16 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
                         runSpacing: 8,
                         children: [
                           for (final season in info.seasons.keys)
-                            ChoiceChip(
+                            FocusRing(
+                              radius: 12,
+                              child: ChoiceChip(
                               label: Text(tr('Season $season', 'الموسم $season')),
                               selected: season == _season,
                               onSelected: (_) => setState(() => _season = season),
                               selectedColor: fade(AppConfig.primary, 0.25),
                               side: BorderSide(color: season == _season ? AppConfig.primary : AppConfig.divider),
                               showCheckmark: false,
+                            ),
                             ),
                         ],
                       ),

@@ -671,3 +671,36 @@ class WatchedBadge extends StatelessWidget {
         ),
       );
 }
+
+/// Clear white frame around whatever inside has the remote's focus
+/// (for list tiles, chips and buttons whose own highlight is too faint).
+class FocusRing extends StatefulWidget {
+  final Widget child;
+  final double radius;
+  const FocusRing({super.key, required this.child, this.radius = 10});
+
+  @override
+  State<FocusRing> createState() => _FocusRingState();
+}
+
+class _FocusRingState extends State<FocusRing> {
+  bool _focused = false;
+
+  @override
+  Widget build(BuildContext context) => Focus(
+        canRequestFocus: false,
+        skipTraversal: true,
+        onFocusChange: (f) {
+          if (f != _focused) setState(() => _focused = f);
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          decoration: BoxDecoration(
+            color: _focused ? fade(AppConfig.primary, 0.20) : Colors.transparent,
+            borderRadius: BorderRadius.circular(widget.radius),
+            border: Border.all(color: _focused ? AppConfig.textPrimary : Colors.transparent, width: 2.5),
+          ),
+          child: widget.child,
+        ),
+      );
+}

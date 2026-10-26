@@ -17,6 +17,10 @@ ThemeData buildTheme() {
   );
 
   final radius = BorderRadius.circular(10);
+  // White frame on the button the remote is on.
+  final focusSide = WidgetStateProperty.resolveWith<BorderSide?>(
+    (s) => s.contains(WidgetState.focused) ? const BorderSide(color: AppConfig.textPrimary, width: 2.5) : null,
+  );
 
   return ThemeData(
     useMaterial3: true,
@@ -59,6 +63,21 @@ ThemeData buildTheme() {
         foregroundColor: Colors.black,
         shape: RoundedRectangleBorder(borderRadius: radius),
         textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+      ).copyWith(side: focusSide),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: radius)).copyWith(
+        side: focusSide,
+        backgroundColor: WidgetStateProperty.resolveWith(
+          (s) => s.contains(WidgetState.focused) ? fade(AppConfig.primary, 0.22) : null,
+        ),
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: radius)).copyWith(
+        backgroundColor: WidgetStateProperty.resolveWith(
+          (s) => s.contains(WidgetState.focused) ? fade(AppConfig.primary, 0.22) : null,
+        ),
       ),
     ),
     snackBarTheme: SnackBarThemeData(

@@ -4,6 +4,7 @@ import '../config.dart';
 import '../data/storage.dart';
 import '../l10n.dart';
 import '../utils.dart';
+import 'common.dart';
 
 /// Subtitle look chosen in Settings (or in the player's ▼ menu).
 class SubStyle {
@@ -79,7 +80,9 @@ class _SubStylePickerState extends State<SubStylePicker> {
         ),
       );
 
-  Widget _chip(String text, bool selected, VoidCallback onTap, {Color? dot}) => ChoiceChip(
+  Widget _chip(String text, bool selected, VoidCallback onTap, {Color? dot}) => FocusRing(
+        radius: 12,
+        child: ChoiceChip(
         label: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -96,6 +99,7 @@ class _SubStylePickerState extends State<SubStylePicker> {
         visualDensity: widget.compact ? VisualDensity.compact : null,
         selectedColor: fade(AppConfig.primary, 0.28),
         side: BorderSide(color: selected ? AppConfig.primary : AppConfig.divider),
+      ),
       );
 
   @override
