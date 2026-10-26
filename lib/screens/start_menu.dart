@@ -8,8 +8,8 @@ import '../utils.dart';
 import '../widgets/common.dart';
 import 'playback.dart';
 
-/// First screen: pick Live TV / Movies / Series / Settings, plus
-/// "Continue watching" for movies and episodes left half-way.
+/// First screen: Live TV (wide) on top, then Series / Movies / Settings,
+/// plus "Continue watching" for movies and episodes left half-way.
 class StartMenu extends StatefulWidget {
   final ValueChanged<int> onSelect;
   const StartMenu({super.key, required this.onSelect});
@@ -35,37 +35,48 @@ class _StartMenuState extends State<StartMenu> {
   @override
   Widget build(BuildContext context) {
     final last = Storage.lastSection.clamp(0, 3);
-    final tiles = [
-      (Icons.live_tv_rounded, tr('Live TV', 'البث المباشر')),
-      (Icons.movie_rounded, tr('Movies', 'الأفلام')),
-      (Icons.video_library_rounded, tr('Series', 'المسلسلات')),
-      (Icons.settings_rounded, tr('Settings', 'الإعدادات')),
+    // Live TV on its own wide row; under it Series, Movies, Settings
+    // (right → left in Arabic, left → right in English).
+    final small = [
+      (2, Icons.video_library_rounded, tr('Series', 'المسلسلات')),
+      (1, Icons.movie_rounded, tr('Movies', 'الأفلام')),
+      (3, Icons.settings_rounded, tr('Settings', 'الإعدادات')),
     ];
     return ListView(
-      padding: const EdgeInsets.fromLTRB(40, 36, 40, 30),
+      padding: const EdgeInsets.fromLTRB(40, 22, 40, 24),
       children: [
+        _MenuTile(
+          icon: Icons.live_tv_rounded,
+          label: tr('Live TV', 'البث المباشر'),
+          height: 150,
+          big: true,
+          autofocus: last == 0,
+          onTap: () => widget.onSelect(0),
+        ),
+        const SizedBox(height: 16),
         Row(
           children: [
-            for (var i = 0; i < tiles.length; i++) ...[
-              if (i > 0) const SizedBox(width: 20),
+            for (var i = 0; i < small.length; i++) ...[
+              if (i > 0) const SizedBox(width: 16),
               Expanded(
                 child: _MenuTile(
-                  icon: tiles[i].$1,
-                  label: tiles[i].$2,
-                  autofocus: i == last,
-                  onTap: () => widget.onSelect(i),
+                  icon: small[i].$2,
+                  label: small[i].$3,
+                  height: 104,
+                  autofocus: last == small[i].$1,
+                  onTap: () => widget.onSelect(small[i].$1),
                 ),
               ),
             ],
           ],
         ),
         if (_continue.isNotEmpty) ...[
-          const SizedBox(height: 34),
+          const SizedBox(height: 22),
           Text(tr('Continue watching', 'تابع المشاهدة'),
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 14),
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 10),
           SizedBox(
-            height: 236,
+            height: 214,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               clipBehavior: Clip.none,
@@ -89,7 +100,16 @@ class _MenuTile extends StatefulWidget {
   final String label;
   final bool autofocus;
   final VoidCallback onTap;
-  const _MenuTile({required this.icon, required this.label, required this.onTap, this.autofocus = false});
+  final double height;
+  final bool big;
+  const _MenuTile({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.autofocus = false,
+    this.height = 160,
+    this.big = false,
+  });
 
   @override
   State<_MenuTile> createState() => _MenuTileState();
@@ -101,7 +121,7 @@ class _MenuTileState extends State<_MenuTile> {
   @override
   Widget build(BuildContext context) {
     return AnimatedScale(
-      scale: _focused ? 1.05 : 1.0,
+      scale: _focused && !widget.big ? 1.05 : 1.0,
       duration: const Duration(milliseconds: 140),
       curve: Curves.easeOutCubic,
       child: Material(
@@ -114,7 +134,7 @@ class _MenuTileState extends State<_MenuTile> {
           onFocusChange: (f) => setState(() => _focused = f),
           onTap: widget.onTap,
           child: Container(
-            height: 160,
+            height: widget.height,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(18),
               border: Border.all(color: _focused ? AppConfig.primary : AppConfig.divider, width: _focused ? 3 : 1),
@@ -122,9 +142,10 @@ class _MenuTileState extends State<_MenuTile> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(widget.icon, size: 52, color: _focused ? AppConfig.primary : AppConfig.textPrimary),
-                const SizedBox(height: 14),
-                Text(widget.label, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
+                Icon(widget.icon, size: widget.big ? 64 : 40, color: _focused ? AppConfig.primary : AppConfig.textPrimary),
+                SizedBox(height: widget.big ? 12 : 8),
+                Text(widget.label,
+                    style: TextStyle(fontSize: widget.big ? 24 : 18, fontWeight: FontWeight.w700)),
               ],
             ),
           ),
@@ -154,7 +175,7 @@ class _ContinueCardState extends State<_ContinueCard> {
     final title = e.isEpisode ? e.seriesName : e.title;
     final sub = e.isEpisode ? '${tr('S', 'م')}${e.season}  ·  ${tr('E', 'ح')}${e.episodeNum}' : null;
     return SizedBox(
-      width: 126,
+      width: 112,
       child: RemoteLongPress(
         onTap: widget.onTap,
         onLongPress: widget.onLongPress,
@@ -171,7 +192,7 @@ class _ContinueCardState extends State<_ContinueCard> {
                 scale: _focused ? 1.06 : 1.0,
                 duration: const Duration(milliseconds: 140),
                 child: Container(
-                  height: 176,
+                  height: 156,
                   decoration: BoxDecoration(
                     color: AppConfig.surfaceHigh,
                     borderRadius: BorderRadius.circular(10),
