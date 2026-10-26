@@ -44,6 +44,21 @@ class Storage {
   static int get lastSection => _p.getInt('last_section') ?? 0;
   static Future<void> setLastSection(int i) => _p.setInt('last_section', i);
 
+  /// Subtitles picked automatically for movies / episodes:
+  /// 'off', 'ar', 'en' or 'ar_en' (Arabic, else English). Default Arabic.
+  static String get subtitleLang => _p.getString('subtitle_lang') ?? 'ar';
+  static Future<void> setSubtitleLang(String v) => _p.setString('subtitle_lang', v);
+
+  /// Subtitle look: color, size, background box and its opacity.
+  static String get subColor => _p.getString('sub_color') ?? 'white';
+  static Future<void> setSubColor(String v) => _p.setString('sub_color', v);
+  static String get subSize => _p.getString('sub_size') ?? 'm';
+  static Future<void> setSubSize(String v) => _p.setString('sub_size', v);
+  static bool get subBackground => _p.getBool('sub_bg') ?? false;
+  static Future<void> setSubBackground(bool v) => _p.setBool('sub_bg', v);
+  static double get subBgOpacity => _p.getDouble('sub_bg_opacity') ?? 0.5;
+  static Future<void> setSubBgOpacity(double v) => _p.setDouble('sub_bg_opacity', v);
+
   /// Watch progress of movies / episodes (JSON, see WatchHistory).
   static String? get watchJson => _p.getString('watch_history');
   static Future<void> setWatchJson(String v) => _p.setString('watch_history', v);

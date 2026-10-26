@@ -6,10 +6,12 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../config.dart';
+import '../data/storage.dart';
 import '../data/watch_history.dart';
 import '../player/player_service.dart';
 import '../utils.dart';
 import '../widgets/stream_info.dart';
+import '../widgets/sub_style.dart';
 import '../l10n.dart';
 
 /// Full-screen player for movies and episodes, driven by the TV remote:
@@ -46,11 +48,49 @@ class _PlayerPageState extends State<PlayerPage> {
   Timer? _saveTimer;
   bool _started = false; // the jump to [startAt] was done (or not needed)
 
+  // Preferred subtitles (Settings), picked once when the file's tracks are known.
+  StreamSubscription<Tracks>? _tracksSub;
+  bool _subsPicked = false;
+
+  void _pickSubtitles(Tracks tracks) {
+    if (_subsPicked) return;
+    final audio = tracks.audio.where((t) => t.id != 'auto' && t.id != 'no');
+    final video = tracks.video.where((t) => t.id != 'auto' && t.id != 'no');
+    if (audio.isEmpty && video.isEmpty) return; // file not opened yet
+    _subsPicked = true;
+    _tracksSub?.cancel();
+    final pref = Storage.subtitleLang;
+    final subs = tracks.subtitle.where((t) => t.id != 'auto' && t.id != 'no').toList();
+    if (pref == 'off') {
+      _svc.player.setSubtitleTrack(SubtitleTrack.no());
+      return;
+    }
+    bool isLang(SubtitleTrack t, List<String> codes, List<String> words) {
+      final l = (t.language ?? '').toLowerCase().trim();
+      final title = (t.title ?? '').toLowerCase();
+      return codes.contains(l) || words.any((w) => title.contains(w) || l.contains(w));
+    }
+    bool ar(SubtitleTrack t) => isLang(t, const ['ar', 'ara', 'arb'], const ['arab', 'عرب']);
+    bool en(SubtitleTrack t) => isLang(t, const ['en', 'eng'], const ['english']);
+    SubtitleTrack? pick;
+    for (final test in pref == 'en' ? [en] : (pref == 'ar_en' ? [ar, en] : [ar])) {
+      for (final t in subs) {
+        if (test(t)) {
+          pick = t;
+          break;
+        }
+      }
+      if (pick != null) break;
+    }
+    if (pick != null) _svc.player.setSubtitleTrack(pick);
+  }
+
   @override
   void initState() {
     super.initState();
     _started = widget.startAt <= Duration.zero;
     _svc.play(widget.url);
+    _tracksSub = _svc.player.stream.tracks.listen(_pickSubtitles);
     if (!_started) {
       _seekTarget = widget.startAt; // the bar shows the target right away
       _durSub = _svc.player.stream.duration.listen((d) {
@@ -94,6 +134,7 @@ class _PlayerPageState extends State<PlayerPage> {
     _seekTimer?.cancel();
     _saveTimer?.cancel();
     _durSub?.cancel();
+    _tracksSub?.cancel();
     _focus.dispose();
     _svc.stop();
     super.dispose();
@@ -216,19 +257,17 @@ class _PlayerPageState extends State<PlayerPage> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              Video(
-                controller: _svc.controller,
-                controls: NoVideoControls,
-                fill: Colors.black,
-                subtitleViewConfiguration: SubtitleViewConfiguration(
-                  style: const TextStyle(
-                    fontSize: 42,
-                    height: 1.35,
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                    shadows: [Shadow(blurRadius: 6, color: Colors.black), Shadow(blurRadius: 2, color: Colors.black)],
+              // Redrawn when the subtitle look is changed in the ▼ menu.
+              ValueListenableBuilder<int>(
+                valueListenable: SubStyle.changed,
+                builder: (context, _, __) => Video(
+                  controller: _svc.controller,
+                  controls: NoVideoControls,
+                  fill: Colors.black,
+                  subtitleViewConfiguration: SubtitleViewConfiguration(
+                    style: SubStyle.textStyle(),
+                    padding: const EdgeInsets.fromLTRB(60, 0, 60, 70),
                   ),
-                  padding: const EdgeInsets.fromLTRB(60, 0, 60, 70),
                 ),
               ),
               StreamBuilder<bool>(
@@ -465,14 +504,17 @@ class _TracksDialogState extends State<_TracksDialog> {
       backgroundColor: AppConfig.surface,
       contentPadding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
       content: SizedBox(
-        width: 640,
-        height: 340,
+        width: 820,
+        height: 360,
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             column(tr('AUDIO', 'الصوت'), Icons.audiotrack_rounded, audioList),
             const SizedBox(width: 20),
             column(tr('SUBTITLES', 'الترجمة'), Icons.subtitles_rounded, subList),
+            const SizedBox(width: 20),
+            column(tr('SUBTITLE STYLE', 'شكل الترجمة'), Icons.format_color_text_rounded,
+                const [SubStylePicker(compact: true)]),
           ],
         ),
       ),

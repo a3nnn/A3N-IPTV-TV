@@ -7,6 +7,7 @@ import '../data/xtream_api.dart';
 import '../player/player_service.dart';
 import '../utils.dart';
 import '../widgets/brand.dart';
+import '../widgets/sub_style.dart';
 import '../widgets/update_dialog.dart';
 import 'home_screen.dart';
 import 'login_screen.dart';
@@ -21,6 +22,12 @@ class SettingsSection extends StatefulWidget {
 class _SettingsSectionState extends State<SettingsSection> {
   bool _preview = Storage.previewEnabled;
   bool _compatible = Storage.compatibleDecoder;
+  String _subLang = Storage.subtitleLang;
+
+  void _setSubLang(String v) {
+    setState(() => _subLang = v);
+    Storage.setSubtitleLang(v);
+  }
 
   Future<void> _setLanguage(bool arabic) async {
     if (arabic == L.isAr) return;
@@ -118,6 +125,31 @@ class _SettingsSectionState extends State<SettingsSection> {
                 );
               },
             ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        _Card(
+          title: tr('Subtitles for movies & series', 'ترجمة الأفلام والمسلسلات'),
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text(
+                tr('Chosen automatically when a movie or episode starts (if the file has it).',
+                    'تنختار تلقائياً أول ما يبدأ الفلم أو الحلقة (إذا كانت موجودة في الملف).'),
+                style: const TextStyle(fontSize: 12, color: AppConfig.textSecondary),
+              ),
+            ),
+            for (final o in [
+              ('off', tr('No subtitles', 'بدون ترجمة')),
+              ('ar', tr('Arabic', 'العربية')),
+              ('en', tr('English', 'الإنجليزية')),
+              ('ar_en', tr('Arabic, otherwise English', 'العربية، وإذا ما فيه فالإنجليزية')),
+            ])
+              _LangOption(label: o.$2, selected: _subLang == o.$1, onTap: () => _setSubLang(o.$1)),
+            const Divider(height: 28),
+            Text(tr('Subtitle style', 'شكل الترجمة'), style: const TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
+            const SubStylePicker(),
           ],
         ),
         const SizedBox(height: 20),
