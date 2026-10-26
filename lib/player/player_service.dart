@@ -56,6 +56,7 @@ class PlayerService {
   DateTime openedAt = DateTime(2000);
 
   String? _currentUrl;
+  String? get currentUrl => _currentUrl;
 
   Future<void> _tune() async {
     // Extra mpv limits (ignored safely if a property is unknown).

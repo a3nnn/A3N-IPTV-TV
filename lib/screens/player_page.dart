@@ -15,6 +15,13 @@ import '../widgets/stream_info.dart';
 import '../widgets/sub_style.dart';
 import '../l10n.dart';
 
+/// The episode after the one playing ("Next episode" button).
+class NextEpisode {
+  final String label;
+  final void Function(BuildContext context) open;
+  const NextEpisode({required this.label, required this.open});
+}
+
 /// Full-screen player for movies and episodes, driven by the TV remote:
 /// OK = play / pause, ◀ ▶ = seek 10 s (hold to go faster), BACK = close.
 class PlayerPage extends StatefulWidget {
@@ -26,7 +33,17 @@ class PlayerPage extends StatefulWidget {
 
   /// Jump here once the video is ready ("continue watching").
   final Duration startAt;
-  const PlayerPage({super.key, required this.url, required this.title, this.watch, this.startAt = Duration.zero});
+
+  /// Series only: the following episode.
+  final NextEpisode? next;
+  const PlayerPage({
+    super.key,
+    required this.url,
+    required this.title,
+    this.watch,
+    this.startAt = Duration.zero,
+    this.next,
+  });
 
   @override
   State<PlayerPage> createState() => _PlayerPageState();
@@ -127,17 +144,55 @@ class _PlayerPageState extends State<PlayerPage> {
     WatchHistory.report(w, pos, dur);
   }
 
-  @override
-  void dispose() {
+  // ▼ moves the remote onto the buttons under the picture
+  // (audio & subtitles, next episode); ▲ or BACK goes back to the video.
+  bool _inButtons = false;
+  final FocusNode _tracksBtn = FocusNode();
+
+  void _enterButtons() {
+    _hideTimer?.cancel();
+    setState(() {
+      _overlay = true;
+      _inButtons = true;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _tracksBtn.requestFocus();
+    });
+  }
+
+  void _leaveButtons() {
+    setState(() => _inButtons = false);
+    _focus.requestFocus();
+    _poke();
+  }
+
+  /// Set when leaving for the next episode (its position is already saved).
+  bool _left = false;
+
+  void _goNext() {
+    final n = widget.next;
+    if (n == null || _left) return;
     _savePosition();
     WatchHistory.saveNow();
+    _left = true;
+    n.open(context);
+  }
+
+  @override
+  void dispose() {
+    _tracksBtn.dispose();
+    if (!_left) {
+      _savePosition();
+      WatchHistory.saveNow();
+    }
     _hideTimer?.cancel();
     _seekTimer?.cancel();
     _saveTimer?.cancel();
     _durSub?.cancel();
     _tracksSub?.cancel();
     _focus.dispose();
-    _svc.stop();
+    // Don't stop the next episode that is already starting.
+    if (_svc.currentUrl == widget.url) _svc.stop();
     super.dispose();
   }
 
@@ -145,7 +200,7 @@ class _PlayerPageState extends State<PlayerPage> {
     _hideTimer?.cancel();
     if (!_overlay) setState(() => _overlay = true);
     _hideTimer = Timer(const Duration(seconds: 4), () {
-      if (mounted) setState(() => _overlay = false);
+      if (mounted && !_inButtons) setState(() => _overlay = false);
     });
   }
 
@@ -179,6 +234,19 @@ class _PlayerPageState extends State<PlayerPage> {
 
   KeyEventResult _onKey(FocusNode node, KeyEvent e) {
     final k = e.logicalKey;
+    if (_inButtons) {
+      // On the buttons: OK / ◀ ▶ work as usual; ▲ or BACK return to the video.
+      if (k == LogicalKeyboardKey.escape || k == LogicalKeyboardKey.goBack) {
+        if (e is KeyUpEvent) _leaveButtons();
+        return KeyEventResult.handled;
+      }
+      if (k == LogicalKeyboardKey.arrowUp) {
+        if (e is KeyDownEvent) _leaveButtons();
+        return KeyEventResult.handled;
+      }
+      if (k == LogicalKeyboardKey.arrowDown) return KeyEventResult.handled;
+      return KeyEventResult.ignored;
+    }
     if (k == LogicalKeyboardKey.escape || k == LogicalKeyboardKey.goBack) {
       if (e is KeyUpEvent) Navigator.of(context).maybePop();
       return KeyEventResult.handled;
@@ -212,9 +280,11 @@ class _PlayerPageState extends State<PlayerPage> {
       _poke();
       return KeyEventResult.handled;
     }
-    if (k == LogicalKeyboardKey.arrowDown ||
-        k == LogicalKeyboardKey.contextMenu ||
-        k == LogicalKeyboardKey.info) {
+    if (k == LogicalKeyboardKey.arrowDown) {
+      _enterButtons();
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.contextMenu || k == LogicalKeyboardKey.info) {
       _openTracks();
       return KeyEventResult.handled;
     }
@@ -230,8 +300,12 @@ class _PlayerPageState extends State<PlayerPage> {
     _hideTimer?.cancel();
     await showDialog<void>(context: context, builder: (_) => _TracksDialog(player: _svc.player));
     if (!mounted) return;
-    _focus.requestFocus();
-    _poke();
+    if (_inButtons) {
+      _tracksBtn.requestFocus();
+    } else {
+      _focus.requestFocus();
+      _poke();
+    }
   }
 
   String _fmt(Duration d) {
@@ -313,7 +387,7 @@ class _PlayerPageState extends State<PlayerPage> {
                               ),
                               const SizedBox(width: 16),
                               Text(
-                                tr('OK  play/pause     ◀ ▶  seek     ▼  audio & subtitles     BACK  exit', 'OK  تشغيل/إيقاف     ◀ ▶  ترجيع/تقديم     ▼  الصوت والترجمة     رجوع  خروج'),
+                                tr('OK  play/pause     ◀ ▶  seek     ▼  buttons     BACK  exit', 'OK  تشغيل/إيقاف     ◀ ▶  ترجيع/تقديم     ▼  الأزرار     رجوع  خروج'),
                                 style: TextStyle(fontSize: 12, color: fade(Colors.white, 0.6)),
                               ),
                             ],
@@ -336,7 +410,28 @@ class _PlayerPageState extends State<PlayerPage> {
                           // Time bar always runs left → right, like the ◀ ▶ buttons.
                           child: Directionality(
                             textDirection: TextDirection.ltr,
-                            child: StreamBuilder<Duration>(
+                            child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                            Row(
+                              children: [
+                                _PlayerButton(
+                                  focusNode: _tracksBtn,
+                                  icon: Icons.subtitles_rounded,
+                                  label: tr('Audio & subtitles', 'الصوت والترجمة'),
+                                  onPressed: _openTracks,
+                                ),
+                                const Spacer(),
+                                if (widget.next != null)
+                                  _PlayerButton(
+                                    icon: Icons.skip_next_rounded,
+                                    label: '${tr('Next episode', 'الحلقة التالية')}  ${widget.next!.label}',
+                                    onPressed: _goNext,
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 14),
+                            StreamBuilder<Duration>(
                             stream: p.stream.position,
                             initialData: p.state.position,
                             builder: (context, _) {
@@ -376,6 +471,8 @@ class _PlayerPageState extends State<PlayerPage> {
                               );
                             },
                           ),
+                            ],
+                            ),
                           ),
                         ),
                       ),
@@ -391,6 +488,28 @@ class _PlayerPageState extends State<PlayerPage> {
   }
 }
 
+
+/// Button under the picture, reached with ▼ on the remote.
+class _PlayerButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+  final FocusNode? focusNode;
+  const _PlayerButton({required this.icon, required this.label, required this.onPressed, this.focusNode});
+
+  @override
+  Widget build(BuildContext context) => TextButton.icon(
+        focusNode: focusNode,
+        onPressed: onPressed,
+        icon: Icon(icon, size: 22),
+        label: Text(label, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+        style: TextButton.styleFrom(
+          foregroundColor: Colors.white,
+          backgroundColor: fade(Colors.black, 0.45),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        ),
+      );
+}
 
 // ------------------------------------------------------------ tracks menu
 

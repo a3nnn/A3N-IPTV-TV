@@ -21,22 +21,49 @@ Future<void> playMovie(BuildContext context, Movie m) {
   return _play(context, entry, ask: true);
 }
 
+WatchEntry _episodeEntry(Series series, Episode e) => WatchEntry(
+      key: WatchHistory.episodeKey(e.id),
+      isEpisode: true,
+      id: e.id,
+      ext: e.ext,
+      title: e.title,
+      image: e.image,
+      seriesId: series.id,
+      seriesName: series.name,
+      seriesCover: series.cover,
+      season: e.season,
+      episodeNum: e.episodeNum,
+    );
+
 /// Opens an episode of [series] (same question as for movies).
-Future<void> playEpisode(BuildContext context, Series series, Episode e) {
-  final entry = WatchEntry(
-    key: WatchHistory.episodeKey(e.id),
-    isEpisode: true,
-    id: e.id,
-    ext: e.ext,
-    title: e.title,
-    image: e.image,
-    seriesId: series.id,
-    seriesName: series.name,
-    seriesCover: series.cover,
-    season: e.season,
-    episodeNum: e.episodeNum,
+/// [all] = every episode of the series in order, for the "Next episode" button.
+Future<void> playEpisode(BuildContext context, Series series, Episode e, {List<Episode> all = const []}) {
+  return _play(context, _episodeEntry(series, e), ask: true, next: _nextOf(series, all, e));
+}
+
+/// The episode after [e] (next in the season, or first of the next season).
+NextEpisode? _nextOf(Series series, List<Episode> all, Episode e) {
+  final i = all.indexWhere((x) => x.id == e.id);
+  if (i < 0 || i + 1 >= all.length) return null;
+  final n = all[i + 1];
+  return NextEpisode(
+    label: 'S${two(n.season)}E${two(n.episodeNum)}',
+    open: (ctx) {
+      final api = Session.api;
+      if (api == null) return;
+      final entry = _episodeEntry(series, n);
+      final saved = WatchHistory.get(entry.key);
+      Navigator.of(ctx).pushReplacement(MaterialPageRoute(
+        builder: (_) => PlayerPage(
+          url: api.seriesEpisodeUrl(entry.id, entry.ext),
+          title: playerTitle(entry),
+          watch: entry,
+          startAt: Duration(seconds: saved != null && saved.resumable ? saved.position : 0),
+          next: _nextOf(series, all, n),
+        ),
+      ));
+    },
   );
-  return _play(context, entry, ask: true);
 }
 
 /// From "Continue watching": goes straight back to where it stopped.
@@ -48,7 +75,7 @@ String playerTitle(WatchEntry e) {
   return '${e.seriesName}  ·  $label${e.title.isNotEmpty ? '  ·  ${e.title}' : ''}';
 }
 
-Future<void> _play(BuildContext context, WatchEntry entry, {required bool ask}) async {
+Future<void> _play(BuildContext context, WatchEntry entry, {required bool ask, NextEpisode? next}) async {
   final api = Session.api;
   if (api == null) return;
   final saved = WatchHistory.get(entry.key);
@@ -74,7 +101,7 @@ Future<void> _play(BuildContext context, WatchEntry entry, {required bool ask}) 
           ],
         ),
       );
-      if (resume == null || !context.mounted) return; // BACK = cancel
+      if (resume == null || !context.mounted) return; // closed = cancel
       if (resume) start = saved.position;
     } else {
       start = saved.position;
@@ -87,6 +114,7 @@ Future<void> _play(BuildContext context, WatchEntry entry, {required bool ask}) 
       title: playerTitle(entry),
       watch: entry,
       startAt: Duration(seconds: start),
+      next: next,
     ),
   ));
 }

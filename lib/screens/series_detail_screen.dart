@@ -108,7 +108,10 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
   }
 
   Future<void> _play(Episode e) async {
-    await playEpisode(context, widget.series, e);
+    final seasons = _info?.seasons ?? const <int, List<Episode>>{};
+    final keys = seasons.keys.toList()..sort();
+    final all = [for (final k in keys) ...seasons[k]!];
+    await playEpisode(context, widget.series, e, all: all);
     if (mounted) setState(() {}); // refresh the watched marks
   }
 

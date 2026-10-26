@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../config.dart';
-import '../data/storage.dart';
 import '../data/watch_history.dart';
 import '../l10n.dart';
 import '../utils.dart';
@@ -34,7 +33,6 @@ class _StartMenuState extends State<StartMenu> {
 
   @override
   Widget build(BuildContext context) {
-    final last = Storage.lastSection.clamp(0, 3);
     // Live TV on its own wide row; under it Series, Movies, Settings
     // (right → left in Arabic, left → right in English).
     final small = [
@@ -50,7 +48,7 @@ class _StartMenuState extends State<StartMenu> {
           label: tr('Live TV', 'البث المباشر'),
           height: 150,
           big: true,
-          autofocus: last == 0,
+          autofocus: true, // the remote always starts on Live TV
           onTap: () => widget.onSelect(0),
         ),
         const SizedBox(height: 16),
@@ -63,7 +61,6 @@ class _StartMenuState extends State<StartMenu> {
                   icon: small[i].$2,
                   label: small[i].$3,
                   height: 104,
-                  autofocus: last == small[i].$1,
                   onTap: () => widget.onSelect(small[i].$1),
                 ),
               ),
