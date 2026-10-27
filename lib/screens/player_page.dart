@@ -410,28 +410,28 @@ class _PlayerPageState extends State<PlayerPage> {
                           // Time bar always runs left → right, like the ◀ ▶ buttons.
                           child: Directionality(
                             textDirection: TextDirection.ltr,
-                            child: Column(
-                            mainAxisSize: MainAxisSize.min,
+                            // One line: ▶  [CC]  time ━━━━ duration  [Next episode]
+                            child: Row(
                             children: [
-                            Row(
-                              children: [
-                                _PlayerButton(
-                                  focusNode: _tracksBtn,
-                                  icon: Icons.subtitles_rounded,
-                                  label: tr('Audio & subtitles', 'الصوت والترجمة'),
-                                  onPressed: _openTracks,
-                                ),
-                                const Spacer(),
-                                if (widget.next != null)
-                                  _PlayerButton(
-                                    icon: Icons.skip_next_rounded,
-                                    label: '${tr('Next episode', 'الحلقة التالية')}  ${widget.next!.label}',
-                                    onPressed: _goNext,
-                                  ),
-                              ],
+                            StreamBuilder<bool>(
+                              stream: p.stream.playing,
+                              initialData: p.state.playing,
+                              builder: (context, s) => Icon(
+                                s.data == true ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                                color: Colors.white,
+                                size: 34,
+                              ),
                             ),
-                            const SizedBox(height: 14),
-                            StreamBuilder<Duration>(
+                            const SizedBox(width: 10),
+                            _RoundIconButton(
+                              focusNode: _tracksBtn,
+                              icon: Icons.subtitles_rounded,
+                              tooltip: tr('Audio & subtitles', 'الصوت والترجمة'),
+                              onPressed: _openTracks,
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                            child: StreamBuilder<Duration>(
                             stream: p.stream.position,
                             initialData: p.state.position,
                             builder: (context, _) {
@@ -442,16 +442,6 @@ class _PlayerPageState extends State<PlayerPage> {
                                   : 0.0;
                               return Row(
                                 children: [
-                                  StreamBuilder<bool>(
-                                    stream: p.stream.playing,
-                                    initialData: p.state.playing,
-                                    builder: (context, s) => Icon(
-                                      s.data == true ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                                      color: Colors.white,
-                                      size: 34,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 14),
                                   Text(_fmt(pos), style: const TextStyle(color: Colors.white, fontSize: 14)),
                                   const SizedBox(width: 14),
                                   Expanded(
@@ -471,6 +461,15 @@ class _PlayerPageState extends State<PlayerPage> {
                               );
                             },
                           ),
+                            ),
+                            if (widget.next != null) ...[
+                              const SizedBox(width: 16),
+                              _PlayerButton(
+                                icon: Icons.skip_next_rounded,
+                                label: '${tr('Next episode', 'الحلقة التالية')}  ${widget.next!.label}',
+                                onPressed: _goNext,
+                              ),
+                            ],
                             ],
                             ),
                           ),
@@ -494,12 +493,10 @@ class _PlayerButton extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback onPressed;
-  final FocusNode? focusNode;
-  const _PlayerButton({required this.icon, required this.label, required this.onPressed, this.focusNode});
+  const _PlayerButton({required this.icon, required this.label, required this.onPressed});
 
   @override
   Widget build(BuildContext context) => TextButton.icon(
-        focusNode: focusNode,
         onPressed: onPressed,
         icon: Icon(icon, size: 22),
         label: Text(label, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
@@ -507,6 +504,37 @@ class _PlayerButton extends StatelessWidget {
           foregroundColor: Colors.white,
           backgroundColor: fade(Colors.black, 0.45),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        ),
+      );
+}
+
+/// Small round icon button (subtitles) next to the play icon.
+/// A white ring shows when the remote is on it.
+class _RoundIconButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
+  final FocusNode? focusNode;
+  const _RoundIconButton({required this.icon, required this.tooltip, required this.onPressed, this.focusNode});
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+        label: tooltip,
+        button: true,
+        child: IconButton(
+          focusNode: focusNode,
+          onPressed: onPressed,
+          icon: Icon(icon, size: 24),
+          style: ButtonStyle(
+            fixedSize: const WidgetStatePropertyAll(Size(46, 46)),
+            shape: const WidgetStatePropertyAll(CircleBorder()),
+            foregroundColor: const WidgetStatePropertyAll(Colors.white),
+            backgroundColor: WidgetStateProperty.resolveWith((s) =>
+                s.contains(WidgetState.focused) ? fade(Colors.white, 0.25) : fade(Colors.black, 0.45)),
+            side: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.focused)
+                ? const BorderSide(color: Colors.white, width: 2.5)
+                : BorderSide.none),
+          ),
         ),
       );
 }

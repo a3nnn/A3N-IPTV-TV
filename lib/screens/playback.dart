@@ -67,7 +67,36 @@ NextEpisode? _nextOf(Series series, List<Episode> all, Episode e) {
 }
 
 /// From "Continue watching": goes straight back to where it stopped.
-Future<void> resumeEntry(BuildContext context, WatchEntry e) => _play(context, e, ask: false);
+/// For an episode, the series' episode list is loaded first so the
+/// "Next episode" button works here too.
+Future<void> resumeEntry(BuildContext context, WatchEntry e) async {
+  final next = e.isEpisode ? await _nextForEntry(e) : null;
+  if (!context.mounted) return;
+  await _play(context, e, ask: false, next: next);
+}
+
+Future<NextEpisode?> _nextForEntry(WatchEntry e) async {
+  final api = Session.api;
+  if (api == null) return null;
+  try {
+    final info = await api.seriesInfo(e.seriesId).timeout(const Duration(seconds: 8));
+    final keys = info.seasons.keys.toList()..sort();
+    final all = [for (final k in keys) ...info.seasons[k]!];
+    final i = all.indexWhere((x) => x.id == e.id);
+    if (i < 0) return null;
+    final series = Series(
+      id: e.seriesId,
+      name: e.seriesName,
+      cover: e.seriesCover,
+      categoryId: '',
+      rating: 0,
+      plot: '',
+    );
+    return _nextOf(series, all, all[i]);
+  } catch (_) {
+    return null; // no internet / server error: play without the button
+  }
+}
 
 String playerTitle(WatchEntry e) {
   if (!e.isEpisode) return e.title;
