@@ -145,9 +145,10 @@ class _PlayerPageState extends State<PlayerPage> {
   }
 
   // ▼ moves the remote onto the buttons under the picture
-  // (audio & subtitles, next episode); ▲ or BACK goes back to the video.
+  // (play/pause, audio & subtitles, next episode); ▲ or BACK goes back to the video.
   bool _inButtons = false;
   final FocusNode _tracksBtn = FocusNode();
+  final FocusNode _playBtn = FocusNode();
 
   void _enterButtons() {
     _hideTimer?.cancel();
@@ -156,7 +157,7 @@ class _PlayerPageState extends State<PlayerPage> {
       _inButtons = true;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _tracksBtn.requestFocus();
+      if (mounted) _playBtn.requestFocus();
     });
   }
 
@@ -181,6 +182,7 @@ class _PlayerPageState extends State<PlayerPage> {
   @override
   void dispose() {
     _tracksBtn.dispose();
+    _playBtn.dispose();
     if (!_left) {
       _savePosition();
       WatchHistory.saveNow();
@@ -416,10 +418,12 @@ class _PlayerPageState extends State<PlayerPage> {
                             StreamBuilder<bool>(
                               stream: p.stream.playing,
                               initialData: p.state.playing,
-                              builder: (context, s) => Icon(
-                                s.data == true ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                                color: Colors.white,
-                                size: 34,
+                              builder: (context, s) => _RoundIconButton(
+                                focusNode: _playBtn,
+                                icon: s.data == true ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                                iconSize: 30,
+                                tooltip: tr('Play / pause', 'تشغيل / إيقاف'),
+                                onPressed: () => p.playOrPause(),
                               ),
                             ),
                             const SizedBox(width: 10),
@@ -508,14 +512,16 @@ class _PlayerButton extends StatelessWidget {
       );
 }
 
-/// Small round icon button (subtitles) next to the play icon.
+/// Small round icon button (play / pause, subtitles) on the time bar line.
 /// A white ring shows when the remote is on it.
 class _RoundIconButton extends StatelessWidget {
   final IconData icon;
   final String tooltip;
   final VoidCallback onPressed;
   final FocusNode? focusNode;
-  const _RoundIconButton({required this.icon, required this.tooltip, required this.onPressed, this.focusNode});
+  final double iconSize;
+  const _RoundIconButton(
+      {required this.icon, required this.tooltip, required this.onPressed, this.focusNode, this.iconSize = 24});
 
   @override
   Widget build(BuildContext context) => Semantics(
@@ -524,7 +530,7 @@ class _RoundIconButton extends StatelessWidget {
         child: IconButton(
           focusNode: focusNode,
           onPressed: onPressed,
-          icon: Icon(icon, size: 24),
+          icon: Icon(icon, size: iconSize),
           style: ButtonStyle(
             fixedSize: const WidgetStatePropertyAll(Size(46, 46)),
             shape: const WidgetStatePropertyAll(CircleBorder()),
