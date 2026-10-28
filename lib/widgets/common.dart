@@ -399,7 +399,8 @@ class TvSearchButton extends StatefulWidget {
   final String hint;
   final TextEditingController controller;
   final ValueChanged<String> onChanged;
-  const TvSearchButton({super.key, required this.hint, required this.controller, required this.onChanged});
+  final FocusNode? focusNode;
+  const TvSearchButton({super.key, required this.hint, required this.controller, required this.onChanged, this.focusNode});
 
   @override
   State<TvSearchButton> createState() => _TvSearchButtonState();
@@ -433,10 +434,16 @@ class _TvSearchButtonState extends State<TvSearchButton> {
   @override
   Widget build(BuildContext context) {
     final q = widget.controller.text;
-    return Material(
+    // ▲ on the search box (top of its column) stays here.
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      onKeyEvent: (_, e) => e.logicalKey == LogicalKeyboardKey.arrowUp ? KeyEventResult.handled : KeyEventResult.ignored,
+      child: Material(
       color: _focused ? fade(AppConfig.primary, 0.28) : AppConfig.surfaceHigh,
       borderRadius: BorderRadius.circular(10),
       child: InkWell(
+        focusNode: widget.focusNode,
         borderRadius: BorderRadius.circular(10),
         focusColor: Colors.transparent,
         onFocusChange: (f) => setState(() => _focused = f),
@@ -465,6 +472,7 @@ class _TvSearchButtonState extends State<TvSearchButton> {
           ),
         ),
       ),
+    ),
     );
   }
 }
@@ -605,13 +613,18 @@ void showToast(BuildContext context, String text) {
 /// does nothing instead of jumping to another panel.
 class StayInList extends StatelessWidget {
   final Widget child;
-  const StayInList({super.key, required this.child});
+
+  /// Where ▲ goes from the top of the list (e.g. the search box above it).
+  /// null = ▲ on the first item stays there.
+  final FocusNode? upTarget;
+  const StayInList({super.key, required this.child, this.upTarget});
 
   @override
   Widget build(BuildContext context) => Focus(
         canRequestFocus: false,
         skipTraversal: true,
         onKeyEvent: (node, e) {
+          if (e.logicalKey == LogicalKeyboardKey.arrowUp) return _up(node, e);
           if (e.logicalKey != LogicalKeyboardKey.arrowDown) return KeyEventResult.ignored;
           if (e is! KeyDownEvent && e is! KeyRepeatEvent) return KeyEventResult.ignored;
           final cur = FocusManager.instance.primaryFocus;
@@ -632,6 +645,28 @@ class StayInList extends StatelessWidget {
         },
         child: child,
       );
+
+  /// ▲ on the first item: go to [upTarget] or stay, never jump to another list.
+  KeyEventResult _up(FocusNode node, KeyEvent e) {
+    if (e is! KeyDownEvent && e is! KeyRepeatEvent) return KeyEventResult.ignored;
+    final cur = FocusManager.instance.primaryFocus;
+    final ctx = cur?.context;
+    if (cur == null || ctx == null) return KeyEventResult.ignored;
+    try {
+      final r = cur.rect;
+      // Another item further up (already built)? Then move normally.
+      final above = node.traversalDescendants.any((d) => d != cur && d.canRequestFocus && d.rect.bottom <= r.top + 2);
+      if (above) return KeyEventResult.ignored;
+      // More items above when scrolling back? Then move normally.
+      final pos = Scrollable.maybeOf(ctx)?.position;
+      if (pos != null && pos.pixels > pos.minScrollExtent + 1) return KeyEventResult.ignored;
+    } catch (_) {
+      return KeyEventResult.ignored;
+    }
+    final t = upTarget;
+    if (e is KeyDownEvent && t != null && t.canRequestFocus) t.requestFocus();
+    return KeyEventResult.handled;
+  }
 }
 
 /// Thin bar at the bottom of a poster / thumbnail: how much was watched.

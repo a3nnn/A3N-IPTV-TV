@@ -149,6 +149,7 @@ class _CatalogSectionState extends State<CatalogSection> {
     _searchCtrl.dispose();
     _gridScroll.dispose();
     _targetNode.dispose();
+    _searchNode.dispose();
     super.dispose();
   }
 
@@ -197,6 +198,7 @@ class _CatalogSectionState extends State<CatalogSection> {
   /// Poster to put the remote's focus on when the section opens.
   int? _focusItemId;
   final FocusNode _targetNode = FocusNode();
+  final FocusNode _searchNode = FocusNode();
   double _gridWidth = 800;
 
   void _restoreLastPlace() {
@@ -321,6 +323,7 @@ class _CatalogSectionState extends State<CatalogSection> {
                 child: SizedBox(
                   width: 420,
                   child: TvSearchButton(
+                    focusNode: _searchNode,
                     hint: widget.searchHint,
                     controller: _searchCtrl,
                     onChanged: (v) => setState(() {
@@ -344,6 +347,7 @@ class _CatalogSectionState extends State<CatalogSection> {
                         return Scrollbar(
                         controller: _gridScroll,
                         child: StayInList(
+                          upTarget: _searchNode,
                           child: GridView.builder(
                           controller: _gridScroll,
                           padding: const EdgeInsets.all(20),

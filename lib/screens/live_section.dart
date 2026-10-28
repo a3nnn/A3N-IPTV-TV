@@ -32,6 +32,7 @@ class _LiveSectionState extends State<LiveSection> {
   final ScrollController _channelScroll = ScrollController();
   final TextEditingController _searchCtrl = TextEditingController();
   final FocusNode _fsFocus = FocusNode();
+  final FocusNode _searchNode = FocusNode();
   // Keeps ONE video surface alive when moving between preview and full screen
   // (re-creating it is what caused the freeze when enlarging).
   final GlobalKey _videoKey = GlobalKey();
@@ -81,6 +82,7 @@ class _LiveSectionState extends State<LiveSection> {
     _channelScroll.dispose();
     _searchCtrl.dispose();
     _fsFocus.dispose();
+    _searchNode.dispose();
     super.dispose();
   }
 
@@ -364,6 +366,7 @@ class _LiveSectionState extends State<LiveSection> {
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
           child: TvSearchButton(
+            focusNode: _searchNode,
             hint: tr('Search channels', 'ابحث في القنوات'),
             controller: _searchCtrl,
             onChanged: (v) => setState(() {
@@ -386,6 +389,7 @@ class _LiveSectionState extends State<LiveSection> {
               : Scrollbar(
                   controller: _channelScroll,
                   child: StayInList(
+                    upTarget: _searchNode,
                     child: ListView.builder(
                     controller: _channelScroll,
                     itemExtent: _rowHeight,
