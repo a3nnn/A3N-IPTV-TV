@@ -17,6 +17,11 @@ class XtreamException implements Exception {
   String toString() => message;
 }
 
+/// The server answered, but refused this account (wrong password, expired…).
+class XtreamAuthException extends XtreamException {
+  XtreamAuthException(super.message);
+}
+
 /// The logged-in session, shared across screens.
 class Session {
   static XtreamApi? api;
@@ -123,16 +128,53 @@ class XtreamApi {
     return res.bodyBytes;
   }
 
+  /// Signs in on whichever server in [AppConfig.hosts] knows this account.
+  /// The server that worked last time ([savedHost]) is tried first; if it
+  /// fails, all the others are tried at the same time and the first one that
+  /// accepts the account wins.
+  static Future<(XtreamApi, AccountInfo)> signIn(String username, String password, {String? savedHost}) async {
+    final hosts = [for (final h in AppConfig.hosts) _normalize(h)];
+    final saved = savedHost == null ? null : _normalize(savedHost);
+    Object? firstError;
+    if (saved != null && hosts.contains(saved)) {
+      final api = XtreamApi(host: saved, username: username, password: password);
+      try {
+        return (api, await api.login());
+      } catch (e) {
+        firstError = e;
+        hosts.remove(saved);
+      }
+    }
+    if (hosts.isEmpty) throw firstError ?? XtreamException(tr('No server set.', 'ما فيه سيرفر.'));
+
+    final done = Completer<(XtreamApi, AccountInfo)>();
+    final errors = <Object>[if (firstError != null) firstError];
+    var left = hosts.length;
+    for (final h in hosts) {
+      final api = XtreamApi(host: h, username: username, password: password);
+      api.login().then((info) {
+        if (!done.isCompleted) done.complete((api, info));
+      }, onError: (Object e) {
+        errors.add(e);
+        if (--left == 0 && !done.isCompleted) {
+          // A server that answered says more than one that couldn't be reached.
+          done.completeError(errors.firstWhere((x) => x is XtreamAuthException, orElse: () => errors.first));
+        }
+      });
+    }
+    return done.future;
+  }
+
   Future<AccountInfo> login() async {
     final data = await _get(const {});
     if (data is! Map) throw XtreamException(tr('Unexpected response from the server.', 'رد غير متوقع من السيرفر.'));
     final ui = data['user_info'];
     if (ui is! Map || '${ui['auth']}' != '1') {
-      throw XtreamException(tr('Wrong username or password.', 'اسم المستخدم أو كلمة المرور غلط.'));
+      throw XtreamAuthException(tr('Wrong username or password.', 'اسم المستخدم أو كلمة المرور غلط.'));
     }
     final info = AccountInfo.fromJson(Map<String, dynamic>.from(ui));
     if (info.status.isNotEmpty && info.status.toLowerCase() != 'active') {
-      throw XtreamException(tr('Subscription status: ${info.status}', 'حالة الاشتراك: ${info.status}'));
+      throw XtreamAuthException(tr('Subscription status: ${info.status}', 'حالة الاشتراك: ${info.status}'));
     }
     return info;
   }

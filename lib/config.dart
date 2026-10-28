@@ -5,16 +5,20 @@ import 'package:flutter/material.dart';
 /// ===============================================================
 class AppConfig {
   // ---------- الهوست ----------
-  // اكتب رابط سيرفر الـ Xtream مع البورت، بدون / في الآخر
+  // روابط سيرفرات الـ Xtream مع البورت، بدون / في الآخر.
+  // الحساب ينجرب عليها كلها، والبرنامج يمشي على اللي يقبله ويحفظه.
   // مثال: http://example.com:8080
-  static const String host = 'http://292910.xyz:8080';
+  static const List<String> hosts = [
+    'http://292910.xyz:8080',
+    'http://operator2.yakuru.icu',
+  ];
 
   // ---------- الهوية ----------
   static const String appName = 'A3N IPTV Player';
   static const String signature = 'Made by A3N';
   // Used only if the real number can't be read. The real number comes from
   // the version typed in release.bat (read from the installed app at start).
-  static const String fallbackVersion = '1.2.6';
+  static const String fallbackVersion = '1.2.7';
   static String version = fallbackVersion;
 
   // ---------- مراقبة الأجهزة والإيقاف (Supabase) ----------

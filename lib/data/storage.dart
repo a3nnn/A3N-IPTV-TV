@@ -17,9 +17,14 @@ class Storage {
     await _p.setString('password', p);
   }
 
+  /// The server this account signed in on last time.
+  static String? get host => _p.getString('host');
+  static Future<void> setHost(String h) => _p.setString('host', h);
+
   static Future<void> clearCredentials() async {
     await _p.remove('username');
     await _p.remove('password');
+    await _p.remove('host');
     await _p.remove('last_channel');
     await _p.remove('last_category');
   }
@@ -71,6 +76,10 @@ class Storage {
 
   static String? get language => _p.getString('language');
   static Future<void> setLanguage(String code) => _p.setString('language', code);
+
+  /// Text size of the whole app: 'small', 'normal' or 'large'.
+  static String get textSize => _p.getString('text_size') ?? 'normal';
+  static Future<void> setTextSize(String v) => _p.setString('text_size', v);
 
   static double get volume => _p.getDouble('volume') ?? 100;
   static Future<void> setVolume(double v) => _p.setDouble('volume', v);

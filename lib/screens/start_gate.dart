@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../config.dart';
 import '../data/license_service.dart';
 import '../data/storage.dart';
 import '../data/xtream_api.dart';
@@ -46,9 +45,9 @@ class _StartGateState extends State<StartGate> {
     }
 
     if (u != null && p != null) {
-      final api = XtreamApi(host: AppConfig.host, username: u, password: p);
       try {
-        final account = await api.login();
+        final (api, account) = await XtreamApi.signIn(u, p, savedHost: Storage.host);
+        await Storage.setHost(api.host);
         Session.api = api;
         Session.account = account;
         if (!mounted || await blocked()) return;

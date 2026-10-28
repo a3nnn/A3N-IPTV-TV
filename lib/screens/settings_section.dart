@@ -12,6 +12,7 @@ import '../widgets/sub_style.dart';
 import '../widgets/update_dialog.dart';
 import 'home_screen.dart';
 import 'login_screen.dart';
+import '../text_size.dart';
 
 class SettingsSection extends StatefulWidget {
   const SettingsSection({super.key});
@@ -24,6 +25,7 @@ class _SettingsSectionState extends State<SettingsSection> {
   bool _preview = Storage.previewEnabled;
   bool _compatible = Storage.compatibleDecoder;
   String _subLang = Storage.subtitleLang;
+  String _textSize = TextSize.value.value;
 
   void _setSubLang(String v) {
     setState(() => _subLang = v);
@@ -77,6 +79,25 @@ class _SettingsSectionState extends State<SettingsSection> {
           children: [
             _LangOption(label: 'العربية', selected: L.isAr, autofocus: true, onTap: () => _setLanguage(true)),
             _LangOption(label: 'English', selected: !L.isAr, onTap: () => _setLanguage(false)),
+          ],
+        ),
+        const SizedBox(height: 20),
+        _Card(
+          title: tr('Text size', 'حجم الخط'),
+          children: [
+            for (final o in [
+              ('small', tr('Small', 'صغير')),
+              ('normal', tr('Normal (recommended)', 'عادي (الأنسب)')),
+              ('large', tr('Large', 'كبير')),
+            ])
+              _LangOption(
+                label: o.$2,
+                selected: _textSize == o.$1,
+                onTap: () {
+                  setState(() => _textSize = o.$1);
+                  TextSize.set(o.$1);
+                },
+              ),
           ],
         ),
         const SizedBox(height: 20),

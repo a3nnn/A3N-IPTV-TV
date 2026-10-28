@@ -9,6 +9,7 @@ import 'data/disk_cache.dart';
 import 'data/storage.dart';
 import 'data/watch_history.dart';
 import 'screens/start_gate.dart';
+import 'text_size.dart';
 import 'theme.dart';
 import 'widgets/common.dart';
 
@@ -22,6 +23,7 @@ Future<void> main() async {
     if (RegExp(r'^\d+\.\d+').hasMatch(info.version)) AppConfig.version = info.version;
   } catch (_) {}
   L.init();
+  TextSize.init();
   WatchHistory.init();
   // Saved posters / lists on the TV (doesn't hold up the start).
   DiskCache.init();
@@ -69,15 +71,22 @@ class A3NApp extends StatelessWidget {
       },
       // Remote navigation: the focused row glides to the middle of the list.
       // Arabic: the whole interface is laid out right-to-left.
-      builder: (context, child) => Directionality(
-        textDirection: arabic ? TextDirection.rtl : TextDirection.ltr,
-        child: Focus(
-          canRequestFocus: false,
-          skipTraversal: true,
-          onKeyEvent: RemoteLongPress.guard,
-          child: FocusTraversalGroup(
-            policy: ReadingOrderTraversalPolicy(requestFocusCallback: _smoothFocus),
-            child: child!,
+      // Text size from Settings applies to the whole app.
+      builder: (context, child) => ValueListenableBuilder<String>(
+        valueListenable: TextSize.value,
+        builder: (context, size, _) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(TextSize.scale(size))),
+          child: Directionality(
+            textDirection: arabic ? TextDirection.rtl : TextDirection.ltr,
+            child: Focus(
+              canRequestFocus: false,
+              skipTraversal: true,
+              onKeyEvent: RemoteLongPress.guard,
+              child: FocusTraversalGroup(
+                policy: ReadingOrderTraversalPolicy(requestFocusCallback: _smoothFocus),
+                child: child!,
+              ),
+            ),
           ),
         ),
       ),

@@ -337,7 +337,8 @@ class _PlayerPageState extends State<PlayerPage> {
               // Redrawn when the subtitle look is changed in the ▼ menu.
               ValueListenableBuilder<int>(
                 valueListenable: SubStyle.changed,
-                builder: (context, _, __) => Video(
+                // Subtitles keep their own size (Subtitle style), not the app's text size.
+                builder: (context, _, __) => MediaQuery.withNoTextScaling(child: Video(
                   controller: _svc.controller,
                   controls: NoVideoControls,
                   fill: Colors.black,
@@ -345,7 +346,7 @@ class _PlayerPageState extends State<PlayerPage> {
                     style: SubStyle.textStyle(),
                     padding: const EdgeInsets.fromLTRB(60, 0, 60, 70),
                   ),
-                ),
+                )),
               ),
               StreamBuilder<bool>(
                 stream: p.stream.buffering,

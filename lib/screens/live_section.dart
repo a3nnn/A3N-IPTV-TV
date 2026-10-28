@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../config.dart';
+import '../data/category_filter.dart';
 import '../data/models.dart';
 import '../data/storage.dart';
 import '../data/xtream_api.dart';
@@ -93,8 +94,11 @@ class _LiveSectionState extends State<LiveSection> {
     try {
       final api = Session.api!;
       final results = await Future.wait<Object>([api.liveCategories(), api.liveStreams()]);
-      final cats = results[0] as List<Category>;
-      final chans = results[1] as List<LiveChannel>;
+      // Categories hidden with A3N Category Manager disappear with their channels.
+      final allCats = results[0] as List<Category>;
+      final hidden = await CategoryFilter.hiddenIds('live', allCats);
+      final cats = allCats.where((c) => !hidden.contains(c.id)).toList();
+      final chans = (results[1] as List<LiveChannel>).where((c) => !hidden.contains(c.categoryId)).toList();
       final counts = <String, int>{};
       for (final c in chans) {
         counts[c.categoryId] = (counts[c.categoryId] ?? 0) + 1;
@@ -323,9 +327,9 @@ class _LiveSectionState extends State<LiveSection> {
                 final w = box.maxWidth;
                 return Row(
                   children: [
-                    SizedBox(width: (w * 0.24).clamp(180.0, 250.0), child: RepaintBoundary(child: _buildCategories())),
+                    SizedBox(width: (w * 0.30).clamp(220.0, 330.0), child: RepaintBoundary(child: _buildCategories())),
                     const VerticalDivider(width: 1),
-                    SizedBox(width: (w * 0.38).clamp(260.0, 390.0), child: RepaintBoundary(child: _buildChannels())),
+                    SizedBox(width: (w * 0.35).clamp(260.0, 370.0), child: RepaintBoundary(child: _buildChannels())),
                     const VerticalDivider(width: 1),
                     Expanded(child: RepaintBoundary(child: _buildPreview())),
                   ],

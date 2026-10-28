@@ -118,6 +118,7 @@ class _CategoryPanelState extends State<CategoryPanel> {
       key: ValueKey('cat-${e.id}'),
       height: 48,
       child: SelectableRow(
+        titleSize: 13,
         selected: e.id == widget.selectedId,
         autofocus: widget.autofocusSelected && e.id == widget.selectedId,
         onTap: () => widget.onSelect(e.id),

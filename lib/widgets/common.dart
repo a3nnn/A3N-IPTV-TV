@@ -156,6 +156,10 @@ class SelectableRow extends StatefulWidget {
   final bool autofocus;
   final VoidCallback? onLongPress;
 
+  /// Long names (categories) can use a second line instead of being cut.
+  final int titleMaxLines;
+  final double titleSize;
+
   /// Change this number to pull the remote's focus back onto this row.
   final int? refocusTick;
 
@@ -171,6 +175,8 @@ class SelectableRow extends StatefulWidget {
     this.autofocus = false,
     this.onLongPress,
     this.refocusTick,
+    this.titleMaxLines = 1,
+    this.titleSize = 14,
   });
 
   @override
@@ -234,10 +240,11 @@ class _SelectableRowState extends State<SelectableRow> {
                   children: [
                     Text(
                       widget.title,
-                      maxLines: 1,
+                      maxLines: widget.titleMaxLines,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 14,
+                        fontSize: widget.titleSize,
+                        height: widget.titleMaxLines > 1 ? 1.2 : null,
                         color: selected || _focused ? AppConfig.textPrimary : fade(AppConfig.textPrimary, 0.88),
                         fontWeight: selected || _focused ? FontWeight.w600 : FontWeight.w400,
                       ),

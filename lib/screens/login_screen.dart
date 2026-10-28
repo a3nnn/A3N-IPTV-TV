@@ -54,10 +54,10 @@ class _LoginScreenState extends State<LoginScreen> {
       _error = null;
     });
 
-    final api = XtreamApi(host: AppConfig.host, username: u, password: p);
     try {
-      final account = await api.login();
+      final (api, account) = await XtreamApi.signIn(u, p);
       await Storage.saveCredentials(u, p);
+      await Storage.setHost(api.host);
       Session.api = api;
       Session.account = account;
       final license = await LicenseService.check(username: u);
