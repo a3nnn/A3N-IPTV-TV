@@ -81,6 +81,7 @@ class _CategoryPanelState extends State<CategoryPanel> {
         _label(tr('CATEGORIES', 'الأقسام'), top: 16),
         Expanded(
           child: StayInList(
+            stopAtTop: true,
             child: ListView.builder(
             itemCount: items.length,
             cacheExtent: 48 * 6,

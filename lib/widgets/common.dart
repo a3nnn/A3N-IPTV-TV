@@ -615,16 +615,21 @@ class StayInList extends StatelessWidget {
   final Widget child;
 
   /// Where ▲ goes from the top of the list (e.g. the search box above it).
-  /// null = ▲ on the first item stays there.
   final FocusNode? upTarget;
-  const StayInList({super.key, required this.child, this.upTarget});
+
+  /// ▲ on the first item stays there (lists side by side, like categories).
+  /// Off by default, so ▲ can still reach things above (e.g. seasons).
+  final bool stopAtTop;
+  const StayInList({super.key, required this.child, this.upTarget, this.stopAtTop = false});
 
   @override
   Widget build(BuildContext context) => Focus(
         canRequestFocus: false,
         skipTraversal: true,
         onKeyEvent: (node, e) {
-          if (e.logicalKey == LogicalKeyboardKey.arrowUp) return _up(node, e);
+          if (e.logicalKey == LogicalKeyboardKey.arrowUp) {
+            return (stopAtTop || upTarget != null) ? _up(node, e) : KeyEventResult.ignored;
+          }
           if (e.logicalKey != LogicalKeyboardKey.arrowDown) return KeyEventResult.ignored;
           if (e is! KeyDownEvent && e is! KeyRepeatEvent) return KeyEventResult.ignored;
           final cur = FocusManager.instance.primaryFocus;

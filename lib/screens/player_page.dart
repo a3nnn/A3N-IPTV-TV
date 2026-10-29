@@ -434,6 +434,16 @@ class _PlayerPageState extends State<PlayerPage> {
                               tooltip: tr('Audio & subtitles', 'الصوت والترجمة'),
                               onPressed: _openTracks,
                             ),
+                            // Next episode: right next to subtitles, so ▶ reaches it at once.
+                            if (widget.next != null) ...[
+                              const SizedBox(width: 10),
+                              _RoundIconButton(
+                                icon: Icons.skip_next_rounded,
+                                iconSize: 28,
+                                tooltip: '${tr('Next episode', 'الحلقة التالية')}  ${widget.next!.label}',
+                                onPressed: _goNext,
+                              ),
+                            ],
                             const SizedBox(width: 14),
                             Expanded(
                             child: StreamBuilder<Duration>(
@@ -467,14 +477,6 @@ class _PlayerPageState extends State<PlayerPage> {
                             },
                           ),
                             ),
-                            if (widget.next != null) ...[
-                              const SizedBox(width: 16),
-                              _PlayerButton(
-                                icon: Icons.skip_next_rounded,
-                                label: '${tr('Next episode', 'الحلقة التالية')}  ${widget.next!.label}',
-                                onPressed: _goNext,
-                              ),
-                            ],
                             ],
                             ),
                           ),
@@ -493,27 +495,7 @@ class _PlayerPageState extends State<PlayerPage> {
 }
 
 
-/// Button under the picture, reached with ▼ on the remote.
-class _PlayerButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onPressed;
-  const _PlayerButton({required this.icon, required this.label, required this.onPressed});
-
-  @override
-  Widget build(BuildContext context) => TextButton.icon(
-        onPressed: onPressed,
-        icon: Icon(icon, size: 22),
-        label: Text(label, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-        style: TextButton.styleFrom(
-          foregroundColor: Colors.white,
-          backgroundColor: fade(Colors.black, 0.45),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        ),
-      );
-}
-
-/// Small round icon button (play / pause, subtitles) on the time bar line.
+/// Small round icon button (play / pause, subtitles, next episode) on the time bar line.
 /// A white ring shows when the remote is on it.
 class _RoundIconButton extends StatelessWidget {
   final IconData icon;
