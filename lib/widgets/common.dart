@@ -9,6 +9,7 @@ import '../data/disk_cache.dart';
 import '../utils.dart';
 import 'tv_keyboard.dart';
 import '../l10n.dart';
+import '../lite.dart';
 
 
 /// "Made by A3N" — shown top-left on every screen.
@@ -105,12 +106,12 @@ class _NetImageState extends State<NetImage> {
     return Image.file(
       file,
       fit: widget.fit,
-      cacheWidth: widget.cacheWidth,
+      cacheWidth: Lite.img(widget.cacheWidth),
       gaplessPlayback: true,
       filterQuality: FilterQuality.low,
-      // Soft fade-in instead of popping in.
+      // Soft fade-in instead of popping in (not in light mode).
       frameBuilder: (context, child, frame, sync) {
-        if (sync) return child;
+        if (sync || Lite.on) return child;
         return AnimatedOpacity(
           opacity: frame == null ? 0 : 1,
           duration: const Duration(milliseconds: 180),

@@ -21,8 +21,8 @@ class PlayerService {
   final Player player = Player(
     configuration: PlayerConfiguration(
       title: AppConfig.appName,
-      // Demuxer cache. 16 MB is ~15 s of a 1080p live stream.
-      bufferSize: 16 * 1024 * 1024,
+      // Demuxer cache. 16 MB is ~15 s of a 1080p live stream (8 MB in light mode).
+      bufferSize: (Storage.liteMode ? 8 : 16) * 1024 * 1024,
     ),
   );
 
@@ -60,7 +60,7 @@ class PlayerService {
 
   Future<void> _tune() async {
     // Extra mpv limits (ignored safely if a property is unknown).
-    const props = <String, String>{
+    final props = <String, String>{
       'demuxer-max-back-bytes': '2097152', // no big rewind buffer for live TV
       'demuxer-readahead-secs': '10',
       'cache-pause-initial': 'no',
@@ -71,6 +71,12 @@ class PlayerService {
       // Jump to the nearest keyframe when seeking: much lighter for the TV's
       // video chip than an exact seek (exact seeks could crash some TVs).
       'hr-seek': 'no',
+      // Light mode: less read-ahead (memory) and cheaper software decoding.
+      if (Storage.liteMode) ...{
+        'demuxer-readahead-secs': '5',
+        'vd-lavc-skiploopfilter': 'all',
+        'vd-lavc-fast': 'yes',
+      },
     };
     for (final e in props.entries) {
       try {

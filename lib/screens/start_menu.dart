@@ -6,6 +6,7 @@ import '../l10n.dart';
 import '../utils.dart';
 import '../widgets/common.dart';
 import 'playback.dart';
+import '../lite.dart';
 
 /// First screen: Live TV (wide) on top, then Series / Movies / Settings,
 /// plus "Continue watching" for movies and episodes left half-way.
@@ -119,7 +120,7 @@ class _MenuTileState extends State<_MenuTile> {
   Widget build(BuildContext context) {
     return AnimatedScale(
       scale: _focused && !widget.big ? 1.05 : 1.0,
-      duration: const Duration(milliseconds: 140),
+      duration: Lite.anim(140),
       curve: Curves.easeOutCubic,
       child: Material(
         color: _focused ? fade(AppConfig.primary, 0.22) : AppConfig.surface,
@@ -187,7 +188,7 @@ class _ContinueCardState extends State<_ContinueCard> {
             children: [
               AnimatedScale(
                 scale: _focused ? 1.06 : 1.0,
-                duration: const Duration(milliseconds: 140),
+                duration: Lite.anim(140),
                 child: Container(
                   height: 156,
                   decoration: BoxDecoration(

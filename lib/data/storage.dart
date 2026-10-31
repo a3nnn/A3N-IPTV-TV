@@ -113,7 +113,13 @@ class Storage {
   static Future<void> setCompatibleDecoder(bool v) => _p.setBool('compatible_decoder', v);
 
   /// Play the channel in the small preview while browsing.
-  static bool get previewEnabled => _p.getBool('preview_enabled') ?? true;
+  /// Off in light mode (Lite) whatever the setting says.
+  static bool get previewEnabled => !liteMode && previewEnabledSetting;
+  static bool get previewEnabledSetting => _p.getBool('preview_enabled') ?? true;
+
+  /// Light mode for weak devices (Fire Stick...). See lib/lite.dart.
+  static bool get liteMode => _p.getBool('lite_mode') ?? false;
+  static Future<void> setLiteMode(bool v) => _p.setBool('lite_mode', v);
   static Future<void> setPreviewEnabled(bool v) => _p.setBool('preview_enabled', v);
 
   // ---------- Movie / series favorites ----------

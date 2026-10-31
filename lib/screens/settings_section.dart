@@ -23,6 +23,7 @@ class SettingsSection extends StatefulWidget {
 
 class _SettingsSectionState extends State<SettingsSection> {
   bool _preview = Storage.previewEnabled;
+  bool _lite = Storage.liteMode;
   bool _compatible = Storage.compatibleDecoder;
   String _subLang = Storage.subtitleLang;
   String _textSize = TextSize.value.value;
@@ -131,10 +132,27 @@ class _SettingsSectionState extends State<SettingsSection> {
           title: tr('Playback', 'التشغيل'),
           children: [
             _SwitchRow(
+              title: tr('Light mode (weak devices)', 'الوضع الخفيف (للأجهزة الضعيفة)'),
+              subtitle: tr('For Fire Stick and slow TVs: no preview while browsing, no animations, smaller pictures, lighter player. Reopen the app after changing.',
+                  'للفاير ستك والأجهزة البطيئة: بدون معاينة أثناء التصفح، بدون حركات، صور أصغر، ومشغّل أخف. اقفل التطبيق وافتحه بعد التغيير.'),
+              value: _lite,
+              onChanged: (v) {
+                setState(() {
+                  _lite = v;
+                  _preview = !v && Storage.previewEnabledSetting;
+                });
+                Storage.setLiteMode(v);
+                ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                  SnackBar(content: Text(tr('Close and reopen the app to apply.', 'اقفل التطبيق وافتحه عشان يتطبق التغيير.'))),
+                );
+              },
+            ),
+            _SwitchRow(
               title: tr('Preview video while browsing', 'معاينة الفيديو أثناء التصفح'),
               subtitle: tr('Off = lighter: OK on a channel opens it full screen directly', 'إذا طفيته يصير أخف: OK على القناة يفتحها بملء الشاشة على طول'),
               value: _preview,
               onChanged: (v) {
+                if (_lite) return; // light mode keeps the preview off
                 setState(() => _preview = v);
                 Storage.setPreviewEnabled(v);
               },

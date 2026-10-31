@@ -9,6 +9,7 @@ import 'data/disk_cache.dart';
 import 'data/storage.dart';
 import 'data/watch_history.dart';
 import 'screens/start_gate.dart';
+import 'lite.dart';
 import 'text_size.dart';
 import 'theme.dart';
 import 'widgets/common.dart';
@@ -115,7 +116,7 @@ void _smoothFocus(
   Scrollable.ensureVisible(
     ctx,
     alignment: 0.5,
-    duration: holding ? Duration.zero : const Duration(milliseconds: 140),
+    duration: holding || Lite.on ? Duration.zero : const Duration(milliseconds: 140),
     curve: Curves.easeOutCubic,
   );
 }

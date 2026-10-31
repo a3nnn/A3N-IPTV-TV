@@ -12,6 +12,7 @@ import '../data/watch_history.dart';
 import 'playback.dart';
 import 'series_detail_screen.dart';
 import '../l10n.dart';
+import '../lite.dart';
 
 const String _allId = '__all';
 const String _favId = '__fav';
@@ -433,7 +434,7 @@ class _PosterCardState extends State<PosterCard> {
             Expanded(
               child: AnimatedScale(
                 scale: _focus ? 1.06 : 1.0,
-                duration: const Duration(milliseconds: 140),
+                duration: Lite.anim(140),
                 curve: Curves.easeOutCubic,
                 child: Container(
                 decoration: BoxDecoration(
