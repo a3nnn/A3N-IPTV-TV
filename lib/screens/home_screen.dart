@@ -67,8 +67,9 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // Re-check every 10 minutes so a block takes effect while the app is open.
-    _licenseTimer = Timer.periodic(const Duration(minutes: 10), (_) => _checkLicense());
+    // Check in every 2 minutes: a block takes effect while the app is open,
+    // and Supabase shows this device as online.
+    _licenseTimer = Timer.periodic(const Duration(minutes: 2), (_) => _checkLicense());
     // Look for a newer version a few seconds after opening (optional update).
     Future.delayed(const Duration(seconds: 3), _checkUpdate);
   }

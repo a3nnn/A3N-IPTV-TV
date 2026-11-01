@@ -6,11 +6,14 @@ import 'package:flutter/material.dart';
 class AppConfig {
   // ---------- الهوست ----------
   // روابط سيرفرات الـ Xtream مع البورت، بدون / في الآخر.
-  // الحساب ينجرب عليها كلها، والبرنامج يمشي على اللي يقبله ويحفظه.
+  // بالترتيب: أول سيرفر يقبل الحساب هو اللي يمشي عليه البرنامج ويحفظه.
   // مثال: http://example.com:8080
   static const List<String> hosts = [
-    'http://292910.xyz:8080',
     'http://operator2.yakuru.icu',
+    'http://operator2.minare.ru',
+    'http://operator2.farmik.tel',
+    'http://operator2.fikar.xyz',
+    'http://292910.xyz:8080',
   ];
 
   // ---------- الهوية ----------
@@ -18,7 +21,7 @@ class AppConfig {
   static const String signature = 'Made by A3N';
   // Used only if the real number can't be read. The real number comes from
   // the version typed in release.bat (read from the installed app at start).
-  static const String fallbackVersion = '1.3.0';
+  static const String fallbackVersion = '1.3.1';
   static String version = fallbackVersion;
 
   // ---------- مراقبة الأجهزة والإيقاف (Supabase) ----------

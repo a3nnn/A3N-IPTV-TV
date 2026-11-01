@@ -135,35 +135,45 @@ class XtreamApi {
   static Future<(XtreamApi, AccountInfo)> signIn(String username, String password, {String? savedHost}) async {
     final hosts = [for (final h in AppConfig.hosts) _normalize(h)];
     final saved = savedHost == null ? null : _normalize(savedHost);
-    Object? firstError;
-    if (saved != null && hosts.contains(saved)) {
+    final errors = <Object>[];
+
+    // The server that worked last time is tried on its own first.
+    if (saved != null && hosts.remove(saved)) {
       final api = XtreamApi(host: saved, username: username, password: password);
       try {
-        return (api, await api.login());
+        return (api, await _tryLogin(api));
       } catch (e) {
-        firstError = e;
-        hosts.remove(saved);
+        errors.add(e);
       }
     }
-    if (hosts.isEmpty) throw firstError ?? XtreamException(tr('No server set.', 'ما فيه سيرفر.'));
-
-    final done = Completer<(XtreamApi, AccountInfo)>();
-    final errors = <Object>[if (firstError != null) firstError];
-    var left = hosts.length;
-    for (final h in hosts) {
-      final api = XtreamApi(host: h, username: username, password: password);
-      api.login().then((info) {
-        if (!done.isCompleted) done.complete((api, info));
-      }, onError: (Object e) {
-        errors.add(e);
-        if (--left == 0 && !done.isCompleted) {
-          // A server that answered says more than one that couldn't be reached.
-          done.completeError(errors.firstWhere((x) => x is XtreamAuthException, orElse: () => errors.first));
-        }
-      });
+    if (hosts.isEmpty) {
+      throw errors.isNotEmpty ? errors.first : XtreamException(tr('No server set.', 'ما فيه سيرفر.'));
     }
-    return done.future;
+
+    // The others are asked at the same time (a dead server doesn't hold the
+    // rest up), but the answer is taken in list order: the first server in
+    // AppConfig.hosts that accepts the account wins.
+    final apis = [for (final h in hosts) XtreamApi(host: h, username: username, password: password)];
+    final tries = [for (final a in apis) _tryLogin(a)];
+    for (final t in tries) {
+      t.ignore(); // errors are read below, in order
+    }
+    for (var i = 0; i < apis.length; i++) {
+      try {
+        return (apis[i], await tries[i]);
+      } catch (e) {
+        errors.add(e);
+      }
+    }
+    // A server that answered says more than one that couldn't be reached.
+    throw errors.firstWhere((x) => x is XtreamAuthException, orElse: () => errors.first);
   }
+
+  static Future<AccountInfo> _tryLogin(XtreamApi api) => api.login().timeout(
+        const Duration(seconds: 15),
+        onTimeout: () => throw XtreamException(
+            tr('Could not reach the server. Check your internet connection.', 'ما قدرنا نوصل للسيرفر. تأكد من الإنترنت.')),
+      );
 
   Future<AccountInfo> login() async {
     final data = await _get(const {});
