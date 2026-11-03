@@ -318,7 +318,7 @@ class PlayerService {
                       child: Padding(
                         padding: const EdgeInsets.all(24),
                         child: Text(
-                          'System player error:\n$err',
+                          'Weak-device player error:\n$err',
                           textAlign: TextAlign.center,
                           textDirection: TextDirection.ltr,
                           style: const TextStyle(color: Colors.white70, fontSize: 14),

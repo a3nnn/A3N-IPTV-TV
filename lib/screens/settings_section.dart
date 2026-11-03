@@ -179,14 +179,14 @@ class _SettingsSectionState extends State<SettingsSection> {
             Padding(
               padding: const EdgeInsets.only(bottom: 6),
               child: Text(
-                tr('If video stutters or runs at a few frames on an old TV or Fire Stick, try the system player. Reopen the app after changing.',
-                    'إذا الفيديو يقطّع أو بطيء على تلفزيون قديم أو فاير ستك، جرّب مشغّل النظام. اقفل التطبيق وافتحه بعد التغيير.'),
+                tr('If video stutters or runs at a few frames on an old TV or Fire Stick, try the weak-device player. Reopen the app after changing.',
+                    'إذا الفيديو يقطّع أو بطيء على تلفزيون قديم أو فاير ستك، جرّب مشغّل الأجهزة الضعيفة. اقفل التطبيق وافتحه بعد التغيير.'),
                 style: const TextStyle(fontSize: 12, color: AppConfig.textSecondary),
               ),
             ),
             for (final o in [
-              ('mpv', tr('Standard player (recommended)', 'المشغّل العادي (الأنسب)')),
-              ('exo', tr('System player (old TVs) - no audio / subtitle choice', 'مشغّل النظام (للأجهزة القديمة) - بدون اختيار الصوت والترجمة')),
+              ('mpv', tr('Main player', 'المشغّل الأساسي')),
+              ('exo', tr('Weak-device player - no audio / subtitle choice', 'مشغّل الأجهزة الضعيفة - بدون اختيار الصوت والترجمة')),
             ])
               _LangOption(
                 label: o.$2,
