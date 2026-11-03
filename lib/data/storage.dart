@@ -117,6 +117,11 @@ class Storage {
   static bool get previewEnabled => !liteMode && previewEnabledSetting;
   static bool get previewEnabledSetting => _p.getBool('preview_enabled') ?? true;
 
+  /// Video player engine: 'mpv' (default) or 'exo' (Android system player,
+  /// for old TVs). Read at start, so the app is reopened after changing it.
+  static String get playerEngine => _p.getString('player_engine') ?? 'mpv';
+  static Future<void> setPlayerEngine(String v) => _p.setString('player_engine', v);
+
   /// Light mode for weak devices (Fire Stick...). See lib/lite.dart.
   static bool get liteMode => _p.getBool('lite_mode') ?? false;
   static Future<void> setLiteMode(bool v) => _p.setBool('lite_mode', v);

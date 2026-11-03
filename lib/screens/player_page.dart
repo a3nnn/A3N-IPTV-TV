@@ -108,10 +108,11 @@ class _PlayerPageState extends State<PlayerPage> {
     super.initState();
     _started = widget.startAt <= Duration.zero;
     _svc.play(widget.url);
-    _tracksSub = _svc.player.stream.tracks.listen(_pickSubtitles);
+    // Audio / subtitle choice: mpv only (the system player can't list them).
+    if (!_svc.isExo) _tracksSub = _svc.player.stream.tracks.listen(_pickSubtitles);
     if (!_started) {
       _seekTarget = widget.startAt; // the bar shows the target right away
-      _durSub = _svc.player.stream.duration.listen((d) {
+      _durSub = _svc.durationStream.listen((d) {
         if (d > Duration.zero) _jumpToStart();
       });
     }
@@ -128,7 +129,7 @@ class _PlayerPageState extends State<PlayerPage> {
     await Future<void>.delayed(const Duration(milliseconds: 400));
     if (!mounted) return;
     try {
-      await _svc.player.seek(widget.startAt);
+      await _svc.seek(widget.startAt);
     } catch (_) {}
     await Future<void>.delayed(const Duration(milliseconds: 400));
     if (mounted && _seekTimer?.isActive != true) setState(() => _seekTarget = null);
@@ -137,9 +138,8 @@ class _PlayerPageState extends State<PlayerPage> {
   void _savePosition() {
     final w = widget.watch;
     if (w == null || !_started) return;
-    final st = _svc.player.state;
-    final pos = (_seekTarget ?? st.position).inSeconds;
-    final dur = st.duration.inSeconds;
+    final pos = (_seekTarget ?? _svc.position).inSeconds;
+    final dur = _svc.duration.inSeconds;
     if (dur <= 0) return;
     WatchHistory.report(w, pos, dur);
   }
@@ -207,13 +207,12 @@ class _PlayerPageState extends State<PlayerPage> {
   }
 
   void _seek(int direction, {bool repeat = false}) {
-    final p = _svc.player;
-    final dur = p.state.duration;
+    final dur = _svc.duration;
     if (dur <= Duration.zero) return; // not loaded yet
     _repeat = repeat ? _repeat + 1 : 0;
     // Holding the button speeds up: 10 s, then 30 s, then 60 s steps.
     final step = _repeat > 12 ? 60 : (_repeat > 4 ? 30 : 10);
-    var target = (_seekTarget ?? p.state.position) + Duration(seconds: step * direction);
+    var target = (_seekTarget ?? _svc.position) + Duration(seconds: step * direction);
     if (target < Duration.zero) target = Duration.zero;
     if (target > dur - const Duration(seconds: 2)) target = dur - const Duration(seconds: 2);
     if (target < Duration.zero) target = Duration.zero;
@@ -227,7 +226,7 @@ class _PlayerPageState extends State<PlayerPage> {
     final t = _seekTarget;
     if (t == null || !mounted) return;
     try {
-      await _svc.player.seek(t);
+      await _svc.seek(t);
     } catch (_) {}
     // Keep showing the target until the player reports the new position.
     await Future<void>.delayed(const Duration(milliseconds: 400));
@@ -268,17 +267,17 @@ class _PlayerPageState extends State<PlayerPage> {
         k == LogicalKeyboardKey.enter ||
         k == LogicalKeyboardKey.space ||
         k == LogicalKeyboardKey.mediaPlayPause) {
-      _svc.player.playOrPause();
+      _svc.playOrPause();
       _poke();
       return KeyEventResult.handled;
     }
     if (k == LogicalKeyboardKey.mediaPlay) {
-      _svc.player.play();
+      _svc.resume();
       _poke();
       return KeyEventResult.handled;
     }
     if (k == LogicalKeyboardKey.mediaPause) {
-      _svc.player.pause();
+      _svc.pause();
       _poke();
       return KeyEventResult.handled;
     }
@@ -299,6 +298,7 @@ class _PlayerPageState extends State<PlayerPage> {
 
   /// ▼ on the remote: pick the audio language and the subtitles of the file.
   Future<void> _openTracks() async {
+    if (_svc.isExo) return; // the system player can't list audio / subtitles
     _hideTimer?.cancel();
     await showDialog<void>(context: context, builder: (_) => _TracksDialog(player: _svc.player));
     if (!mounted) return;
@@ -319,7 +319,7 @@ class _PlayerPageState extends State<PlayerPage> {
 
   @override
   Widget build(BuildContext context) {
-    final p = _svc.player;
+    final p = _svc;
     return Scaffold(
       backgroundColor: Colors.black,
       body: Focus(
@@ -338,19 +338,16 @@ class _PlayerPageState extends State<PlayerPage> {
               ValueListenableBuilder<int>(
                 valueListenable: SubStyle.changed,
                 // Subtitles keep their own size (Subtitle style), not the app's text size.
-                builder: (context, _, __) => MediaQuery.withNoTextScaling(child: Video(
-                  controller: _svc.controller,
-                  controls: NoVideoControls,
-                  fill: Colors.black,
-                  subtitleViewConfiguration: SubtitleViewConfiguration(
+                builder: (context, _, __) => MediaQuery.withNoTextScaling(child: _svc.view(
+                  subtitles: SubtitleViewConfiguration(
                     style: SubStyle.textStyle(),
                     padding: const EdgeInsets.fromLTRB(60, 0, 60, 70),
                   ),
                 )),
               ),
               StreamBuilder<bool>(
-                stream: p.stream.buffering,
-                initialData: p.state.buffering,
+                stream: p.bufferingStream,
+                initialData: p.buffering,
                 builder: (context, snap) => snap.data == true
                     ? const IgnorePointer(child: Center(child: CircularProgressIndicator()))
                     : const SizedBox.shrink(),
@@ -417,8 +414,8 @@ class _PlayerPageState extends State<PlayerPage> {
                             child: Row(
                             children: [
                             StreamBuilder<bool>(
-                              stream: p.stream.playing,
-                              initialData: p.state.playing,
+                              stream: p.playingStream,
+                              initialData: p.playing,
                               builder: (context, s) => _RoundIconButton(
                                 focusNode: _playBtn,
                                 icon: s.data == true ? Icons.pause_rounded : Icons.play_arrow_rounded,
@@ -427,13 +424,16 @@ class _PlayerPageState extends State<PlayerPage> {
                                 onPressed: () => p.playOrPause(),
                               ),
                             ),
-                            const SizedBox(width: 10),
-                            _RoundIconButton(
-                              focusNode: _tracksBtn,
-                              icon: Icons.subtitles_rounded,
-                              tooltip: tr('Audio & subtitles', 'الصوت والترجمة'),
-                              onPressed: _openTracks,
-                            ),
+                            // Audio & subtitles: mpv only (hidden with the system player).
+                            if (!p.isExo) ...[
+                              const SizedBox(width: 10),
+                              _RoundIconButton(
+                                focusNode: _tracksBtn,
+                                icon: Icons.subtitles_rounded,
+                                tooltip: tr('Audio & subtitles', 'الصوت والترجمة'),
+                                onPressed: _openTracks,
+                              ),
+                            ],
                             // Next episode: right next to subtitles, so ▶ reaches it at once.
                             if (widget.next != null) ...[
                               const SizedBox(width: 10),
@@ -447,11 +447,11 @@ class _PlayerPageState extends State<PlayerPage> {
                             const SizedBox(width: 14),
                             Expanded(
                             child: StreamBuilder<Duration>(
-                            stream: p.stream.position,
-                            initialData: p.state.position,
+                            stream: p.positionStream,
+                            initialData: p.position,
                             builder: (context, _) {
-                              final pos = _seekTarget ?? p.state.position;
-                              final dur = p.state.duration;
+                              final pos = _seekTarget ?? p.position;
+                              final dur = p.duration;
                               final v = dur.inMilliseconds > 0
                                   ? (pos.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0)
                                   : 0.0;

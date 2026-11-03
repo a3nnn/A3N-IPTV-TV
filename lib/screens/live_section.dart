@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:media_kit_video/media_kit_video.dart';
 
 import '../config.dart';
 import '../data/category_filter.dart';
@@ -341,7 +340,7 @@ class _LiveSectionState extends State<LiveSection> {
     );
   }
 
-  Widget _video() => Video(key: _videoKey, controller: _svc.controller, controls: NoVideoControls, fill: Colors.black);
+  Widget _video() => _svc.view(key: _videoKey);
 
   Widget _buildCategories() {
     final favCount = _favCount;
@@ -565,8 +564,8 @@ class _LiveSectionState extends State<LiveSection> {
   }
 
   Widget _bufferingIndicator() => StreamBuilder<bool>(
-        stream: _svc.player.stream.buffering,
-        initialData: _svc.player.state.buffering,
+        stream: _svc.bufferingStream,
+        initialData: _svc.buffering,
         builder: (context, snap) => snap.data == true
             ? const Center(child: CircularProgressIndicator())
             : const SizedBox.shrink(),

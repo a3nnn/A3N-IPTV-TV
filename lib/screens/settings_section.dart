@@ -24,6 +24,7 @@ class SettingsSection extends StatefulWidget {
 class _SettingsSectionState extends State<SettingsSection> {
   bool _preview = Storage.previewEnabled;
   bool _lite = Storage.liteMode;
+  String _engine = Storage.playerEngine;
   bool _compatible = Storage.compatibleDecoder;
   String _subLang = Storage.subtitleLang;
   String _textSize = TextSize.value.value;
@@ -169,6 +170,36 @@ class _SettingsSectionState extends State<SettingsSection> {
                 );
               },
             ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        _Card(
+          title: tr('Video player', 'مشغّل الفيديو'),
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text(
+                tr('If video stutters or runs at a few frames on an old TV or Fire Stick, try the system player. Reopen the app after changing.',
+                    'إذا الفيديو يقطّع أو بطيء على تلفزيون قديم أو فاير ستك، جرّب مشغّل النظام. اقفل التطبيق وافتحه بعد التغيير.'),
+                style: const TextStyle(fontSize: 12, color: AppConfig.textSecondary),
+              ),
+            ),
+            for (final o in [
+              ('mpv', tr('Standard player (recommended)', 'المشغّل العادي (الأنسب)')),
+              ('exo', tr('System player (old TVs) - no audio / subtitle choice', 'مشغّل النظام (للأجهزة القديمة) - بدون اختيار الصوت والترجمة')),
+            ])
+              _LangOption(
+                label: o.$2,
+                selected: _engine == o.$1,
+                onTap: () {
+                  if (_engine == o.$1) return;
+                  setState(() => _engine = o.$1);
+                  Storage.setPlayerEngine(o.$1);
+                  ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                    SnackBar(content: Text(tr('Close and reopen the app to apply.', 'اقفل التطبيق وافتحه عشان يتطبق التغيير.'))),
+                  );
+                },
+              ),
           ],
         ),
         const SizedBox(height: 20),
