@@ -58,12 +58,39 @@ class XtreamApi {
     return data.whereType<Map>().map((e) => fromJson(Map<String, dynamic>.from(e))).toList();
   }
 
+  /// Movie and series lists kept ready in memory after the first opening, so
+  /// going back to the section shows them at once. Replaced by the fresh copy
+  /// as soon as the background download finishes (new titles show without
+  /// reopening the app).
+  static final Map<String, List<Object?>> _mem = {};
+  static const Set<String> _keepInMemory = {
+    'get_vod_categories', 'get_vod_streams', 'get_series_categories', 'get_series',
+  };
+
   Future<List<T>> _listOf<T>(String action, T Function(Map<String, dynamic>) fromJson) async {
-    final bytes = await _cachedFetch(action);
+    final name = _listName(action);
+    final keep = _keepInMemory.contains(action);
+    if (keep) {
+      final m = _mem[name];
+      if (m != null) return m as List<T>;
+    }
+    final bytes = await _cachedFetch(
+      action,
+      onFresh: !keep
+          ? null
+          : (fresh) async {
+              try {
+                _mem[name] = await Isolate.run(() => _parseList<T>(fresh, fromJson));
+              } catch (_) {}
+            },
+    );
     try {
-      return await Isolate.run(() => _parseList<T>(bytes, fromJson));
+      final list = await Isolate.run(() => _parseList<T>(bytes, fromJson));
+      if (!keep) return list;
+      // If the fresh copy got here first, keep it.
+      return (_mem[name] ??= list) as List<T>;
     } catch (_) {
-      await DiskCache.deleteList(_listName(action));
+      await DiskCache.deleteList(name);
       throw XtreamException(tr('Unexpected response from the server.', 'رد غير متوقع من السيرفر.'));
     }
   }
@@ -76,12 +103,18 @@ class XtreamApi {
   /// Uses the copy saved on the TV so the screen opens at once, and quietly
   /// downloads a fresh copy for next time. A copy older than a day is only
   /// used if the server can't be reached.
-  Future<Uint8List> _cachedFetch(String action) async {
+  Future<Uint8List> _cachedFetch(String action, {Future<void> Function(Uint8List fresh)? onFresh}) async {
     final name = _listName(action);
     final saved = await DiskCache.readList(name);
     if (saved != null && saved.$2 < const Duration(hours: 24)) {
       if (_refreshed.add(name)) {
-        unawaited(_fetch({'action': action}).then((b) => DiskCache.writeList(name, b)).catchError((_) {}));
+        unawaited(() async {
+          try {
+            final b = await _fetch({'action': action});
+            await DiskCache.writeList(name, b);
+            if (onFresh != null) await onFresh(b);
+          } catch (_) {}
+        }());
       }
       return saved.$1;
     }

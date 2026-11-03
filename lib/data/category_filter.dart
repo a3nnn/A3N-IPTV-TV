@@ -37,10 +37,20 @@ class CategoryFilter {
     return {for (final c in cats) if (rule.hides(c.id, c.name)) c.id};
   }
 
-  static Future<void> _ensure() {
+  /// Never makes the screen wait when a list is already known: the last list
+  /// is used at once and a fresh one is asked for in the background (a change
+  /// made in Category Manager shows the next time the section is opened).
+  static Future<void> _ensure() async {
     final at = _fetchedAt;
-    if (_hidden != null && at != null && DateTime.now().difference(at) < _cacheFor) return Future.value();
-    return _running ??= _refresh().whenComplete(() => _running = null);
+    if (_hidden != null && at != null && DateTime.now().difference(at) < _cacheFor) return;
+    if (_hidden == null) {
+      try {
+        final saved = _fromPrefs(await SharedPreferences.getInstance());
+        if (saved.isNotEmpty) _hidden = saved;
+      } catch (_) {}
+    }
+    final job = _running ??= _refresh().whenComplete(() => _running = null);
+    if (_hidden == null) await job; // very first start: nothing to show yet
   }
 
   static Future<void> _refresh() async {
