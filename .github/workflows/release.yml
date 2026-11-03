@@ -26,7 +26,12 @@ jobs:
 
       - name: Version from tag
         run: |
-          V="${GITHUB_REF_NAME#v}"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            V="${GITHUB_REF_NAME#v}"
+          else
+            # Manual run: the version written in lib/config.dart
+            V=$(grep -oP "fallbackVersion = '\K[0-9]+\.[0-9]+\.[0-9]+" lib/config.dart || true)
+          fi
           [[ "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || V="0.0.0"
           echo "APP_VERSION=$V" >> "$GITHUB_ENV"
 
@@ -80,8 +85,10 @@ jobs:
           path: A3N_IPTV_Player.apk
 
       - name: Publish GitHub release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && env.APP_VERSION != '0.0.0')
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ env.APP_VERSION }}
+          target_commitish: ${{ github.sha }}
           name: A3N IPTV Player TV ${{ env.APP_VERSION }}
           files: A3N_IPTV_Player.apk
