@@ -116,6 +116,9 @@ class PlayerService {
   final ValueNotifier<VideoPlayerController?> _exoNow = ValueNotifier<VideoPlayerController?>(null);
   VideoPlayerController? _exo;
 
+  /// Why the system player couldn't play (shown on the picture), null = fine.
+  final ValueNotifier<String?> _exoError = ValueNotifier<String?>(null);
+
   final StreamController<Duration> _posCtl = StreamController<Duration>.broadcast();
   final StreamController<Duration> _durCtl = StreamController<Duration>.broadcast();
   final StreamController<bool> _playCtl = StreamController<bool>.broadcast();
@@ -135,6 +138,9 @@ class PlayerService {
     if (v.isPlaying != _xPlaying) _playCtl.add(_xPlaying = v.isPlaying);
     final buf = v.isBuffering || (!v.isInitialized && !v.hasError);
     if (buf != _xBuffering) _bufCtl.add(_xBuffering = buf);
+    if (v.hasError && _exoError.value == null) {
+      _exoError.value = v.errorDescription ?? 'unknown error';
+    }
     final size = (v.size.width.round(), v.size.height.round());
     if (size != _xSize) _sizeCtl.add(_xSize = size);
   }
@@ -150,6 +156,7 @@ class PlayerService {
     final old = _exo;
     _exo = null;
     _exoNow.value = null;
+    _exoError.value = null;
     if (old != null) {
       old.removeListener(_exoTick);
       try {
@@ -165,16 +172,28 @@ class PlayerService {
     final c = VideoPlayerController.networkUrl(
       Uri.parse(url),
       httpHeaders: const {'User-Agent': AppConfig.userAgent},
+      // A real Android video surface (straight from the TV's video chip to
+      // the screen) instead of a Flutter texture, which shows only black on
+      // some TVs.
+      viewType: VideoViewType.platformView,
     );
     _exo = c;
     c.addListener(_exoTick);
     try {
-      await c.initialize();
+      await c.initialize().timeout(const Duration(seconds: 25));
       if (_exo != c) return; // another stream was opened meanwhile
       _exoNow.value = c;
       await c.play();
-    } catch (_) {
-      if (_exo == c) _bufCtl.add(_xBuffering = false);
+    } on TimeoutException {
+      if (_exo == c) {
+        _bufCtl.add(_xBuffering = false);
+        _exoError.value = 'Timed out opening the stream';
+      }
+    } catch (e) {
+      if (_exo == c) {
+        _bufCtl.add(_xBuffering = false);
+        _exoError.value = e.toString();
+      }
     }
   }
 
@@ -278,9 +297,11 @@ class PlayerService {
       valueListenable: _exoNow,
       builder: (context, c, _) => ColoredBox(
         color: Colors.black,
-        child: c == null
-            ? const SizedBox.expand()
-            : ValueListenableBuilder<VideoPlayerValue>(
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (c != null)
+              ValueListenableBuilder<VideoPlayerValue>(
                 valueListenable: c,
                 builder: (context, v, _) => Center(
                   child: AspectRatio(
@@ -289,6 +310,24 @@ class PlayerService {
                   ),
                 ),
               ),
+            ValueListenableBuilder<String?>(
+              valueListenable: _exoError,
+              builder: (context, err, _) => err == null
+                  ? const SizedBox.shrink()
+                  : Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(
+                          'System player error:\n$err',
+                          textAlign: TextAlign.center,
+                          textDirection: TextDirection.ltr,
+                          style: const TextStyle(color: Colors.white70, fontSize: 14),
+                        ),
+                      ),
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }
