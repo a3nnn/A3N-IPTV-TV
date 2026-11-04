@@ -209,6 +209,19 @@ class TopBar extends StatelessWidget {
         color: AppConfig.surface,
         border: Border(bottom: BorderSide(color: AppConfig.divider)),
       ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Main screens only (not pages with their own title).
+          if (title == null && leading == null) const _Greeting(),
+          _row(exp),
+        ],
+      ),
+    );
+  }
+
+  Widget _row(DateTime? exp) {
+    return Container(
       child: Row(
         children: [
           if (leading != null) ...[leading!, const SizedBox(width: 6)],
@@ -231,6 +244,48 @@ class TopBar extends StatelessWidget {
       ),
     );
   }
+}
+
+/// "Good morning" / "صباح الخير" in the middle of the top bar, following
+/// the time of day and the app language.
+class _Greeting extends StatefulWidget {
+  const _Greeting();
+
+  @override
+  State<_Greeting> createState() => _GreetingState();
+}
+
+class _GreetingState extends State<_Greeting> {
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  static String text(int hour) {
+    if (hour >= 5 && hour < 12) return tr('Good morning ☀️', 'صباح الخير ☀️');
+    if (hour >= 12 && hour < 18) return tr('Good afternoon 🌤️', 'مساء الخير 🌤️');
+    return tr('Good evening 🌙', 'مساء الخير 🌙');
+  }
+
+  @override
+  Widget build(BuildContext context) => IgnorePointer(
+        child: Text(
+          text(DateTime.now().hour),
+          maxLines: 1,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppConfig.textPrimary),
+        ),
+      );
 }
 
 class NavRail extends StatelessWidget {

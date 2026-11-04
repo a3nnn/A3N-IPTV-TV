@@ -94,7 +94,7 @@ class _LiveSectionState extends State<LiveSection> {
     });
     try {
       final api = Session.api!;
-      final results = await Future.wait<Object>([api.liveCategories(), api.liveStreams()]);
+      final results = await loadWithLimit(Future.wait<Object>([api.liveCategories(), api.liveStreams()]));
       // Categories hidden with A3N Category Manager disappear with their channels.
       final allCats = results[0] as List<Category>;
       final hidden = await CategoryFilter.hiddenIds('live', allCats);
@@ -317,7 +317,7 @@ class _LiveSectionState extends State<LiveSection> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_loading) return const LoadingView();
     if (_error != null) return ErrorView(message: _error!, onRetry: _load);
     // Remote BACK in full screen returns to the list instead of leaving the app.
     return Container(

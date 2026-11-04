@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../config.dart';
 import '../data/disk_cache.dart';
+import '../data/xtream_api.dart';
 import '../utils.dart';
 import 'tv_keyboard.dart';
 import '../l10n.dart';
@@ -751,4 +752,58 @@ class _FocusRingState extends State<FocusRing> {
           child: widget.child,
         ),
       );
+}
+
+
+/// Loading circle with what is being loaded under it (saved list,
+/// download progress in MB, preparing...).
+class LoadingView extends StatelessWidget {
+  const LoadingView({super.key});
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 16),
+            ValueListenableBuilder<String?>(
+              valueListenable: XtreamApi.loadStatus,
+              builder: (context, s, _) => Text(
+                s ?? '',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 14, color: AppConfig.textSecondary),
+              ),
+            ),
+          ],
+        ),
+      );
+}
+
+/// Stops the loading circle only when NOTHING moves for 90 s (no data
+/// arriving, no step finished): a slow internet keeps going as long as the
+/// download advances. Then "Try again" (which picks up the same download).
+Future<T> loadWithLimit<T>(Future<T> f) {
+  final done = Completer<T>();
+  Timer? stall;
+  void arm() {
+    stall?.cancel();
+    stall = Timer(const Duration(seconds: 90), () {
+      if (done.isCompleted) return;
+      done.completeError(XtreamException(tr('Loading stopped moving. Check your internet connection and try again.',
+          'التحميل وقف. تأكد من الإنترنت وحاول مرة ثانية.')));
+    });
+  }
+
+  XtreamApi.loadStatus.addListener(arm);
+  arm();
+  f.then((v) {
+    if (!done.isCompleted) done.complete(v);
+  }, onError: (Object e, StackTrace st) {
+    if (!done.isCompleted) done.completeError(e, st);
+  });
+  return done.future.whenComplete(() {
+    stall?.cancel();
+    XtreamApi.loadStatus.removeListener(arm);
+  });
 }

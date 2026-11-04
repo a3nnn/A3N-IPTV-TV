@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../config.dart';
 import '../l10n.dart';
+import '../data/speed_test.dart';
 import '../data/storage.dart';
 import '../data/xtream_api.dart';
 import '../player/player_service.dart';
@@ -73,7 +74,7 @@ class _SettingsSectionState extends State<SettingsSection> {
   // a choice opens a small window to pick another.
 
   int _group = 0;
-  final List<FocusNode> _groupNodes = List.generate(6, (_) => FocusNode());
+  final List<FocusNode> _groupNodes = List.generate(7, (_) => FocusNode());
 
   @override
   void dispose() {
@@ -88,6 +89,7 @@ class _SettingsSectionState extends State<SettingsSection> {
         (Icons.play_circle_outline_rounded, tr('Playback', 'التشغيل')),
         (Icons.closed_caption_outlined, tr('Subtitles', 'الترجمة')),
         (Icons.person_outline_rounded, tr('Account', 'الحساب')),
+        (Icons.speed_rounded, tr('Internet', 'الإنترنت')),
         (Icons.settings_remote_outlined, tr('Remote control', 'الريموت')),
         (Icons.info_outline_rounded, tr('About', 'عن التطبيق')),
       ];
@@ -337,7 +339,8 @@ class _SettingsSectionState extends State<SettingsSection> {
       1 => _playback(),
       2 => _subtitles(),
       3 => _account(),
-      4 => _remote(),
+      4 => const [_SpeedPanel()],
+      5 => _remote(),
       _ => _about(),
     };
     return Row(
@@ -601,6 +604,128 @@ class _LangOption extends StatelessWidget {
       title: Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
       onTap: onTap,
     ),
+    );
+  }
+}
+
+
+/// Settings > Internet: speed test.
+class _SpeedPanel extends StatefulWidget {
+  const _SpeedPanel();
+
+  @override
+  State<_SpeedPanel> createState() => _SpeedPanelState();
+}
+
+class _SpeedPanelState extends State<_SpeedPanel> {
+  bool _running = false;
+  String? _step;
+  double? _internet;
+  double? _server;
+  int? _ping;
+  bool _failedInternet = false;
+  bool _failedServer = false;
+
+  Future<void> _run() async {
+    if (_running) return;
+    setState(() {
+      _running = true;
+      _internet = _server = null;
+      _ping = null;
+      _failedInternet = _failedServer = false;
+      _step = tr('Measuring the internet speed...', 'جاري قياس سرعة الإنترنت...');
+    });
+    try {
+      _internet = await SpeedTest.internet((v) {
+        if (mounted) setState(() => _internet = v);
+      });
+    } catch (_) {
+      _failedInternet = true;
+      _internet = null;
+    }
+    if (!mounted) return;
+    setState(() => _step = tr('Measuring the channels server...', 'جاري قياس سيرفر القنوات...'));
+    _ping = await SpeedTest.ping();
+    if (!mounted) return;
+    try {
+      _server = await SpeedTest.server((v) {
+        if (mounted) setState(() => _server = v);
+      });
+      if (_server == null) _failedServer = true;
+    } catch (_) {
+      _failedServer = true;
+      _server = null;
+    }
+    if (!mounted) return;
+    setState(() {
+      _running = false;
+      _step = null;
+    });
+  }
+
+  String _mbps(double? v, bool failed) {
+    if (failed) return tr('Failed', 'فشل');
+    if (v == null) return '-';
+    return tr('${v.toStringAsFixed(1)} Mbps', '${v.toStringAsFixed(1)} ميقابت');
+  }
+
+  /// What the channels server speed is good for.
+  (IconData, Color, String)? _verdict() {
+    final v = _server ?? (_failedServer ? null : null);
+    if (v == null || _running) return null;
+    if (v >= 25) return (Icons.check_circle_rounded, AppConfig.primary, tr('Excellent for 4K and Full HD', 'ممتاز لـ 4K و Full HD'));
+    if (v >= 10) return (Icons.check_circle_rounded, AppConfig.primary, tr('Excellent for Full HD', 'ممتاز لـ Full HD'));
+    if (v >= 5) return (Icons.info_rounded, AppConfig.accent, tr('Enough for HD', 'يكفي لـ HD'));
+    return (Icons.warning_rounded, AppConfig.danger, tr('Video may stutter', 'ممكن الفيديو يقطّع'));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final verdict = _verdict();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(10, 4, 10, 12),
+          child: Text(
+            tr('Takes about 20 seconds. Any video playing is stopped during the test.',
+                'ياخذ حوالي 20 ثانية. أي فيديو شغّال يوقف وقت القياس.'),
+            style: const TextStyle(fontSize: 12, color: AppConfig.textSecondary),
+          ),
+        ),
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: Padding(
+            padding: const EdgeInsetsDirectional.only(start: 10, bottom: 12),
+            child: FilledButton.icon(
+              onPressed: _running ? null : _run,
+              icon: _running
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.black))
+                  : const Icon(Icons.speed_rounded),
+              label: Text(_running ? tr('Measuring...', 'جاري القياس...') : tr('Start test', 'ابدأ القياس')),
+            ),
+          ),
+        ),
+        if (_step != null)
+          Padding(
+            padding: const EdgeInsetsDirectional.only(start: 10, bottom: 8),
+            child: Text(_step!, style: const TextStyle(color: AppConfig.textSecondary)),
+          ),
+        _InfoRow(tr('Internet speed', 'سرعة الإنترنت العامة'), _mbps(_internet, _failedInternet)),
+        _InfoRow(tr('Channels server speed', 'السرعة من سيرفر القنوات'), _mbps(_server, _failedServer)),
+        _InfoRow(tr('Response time (ping)', 'زمن الاستجابة (Ping)'), _ping == null ? '-' : '$_ping ms'),
+        if (verdict != null)
+          Padding(
+            padding: const EdgeInsetsDirectional.only(start: 10, top: 12),
+            child: Row(
+              children: [
+                Icon(verdict.$1, color: verdict.$2),
+                const SizedBox(width: 10),
+                Expanded(child: Text(verdict.$3, style: TextStyle(fontWeight: FontWeight.w700, color: verdict.$2))),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }

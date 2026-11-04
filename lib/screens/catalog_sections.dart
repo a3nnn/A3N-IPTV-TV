@@ -219,7 +219,7 @@ class _CatalogSectionState extends State<CatalogSection> {
       _error = null;
     });
     try {
-      final data = await widget.load();
+      final data = await loadWithLimit(widget.load());
       final counts = <String, int>{};
       for (final it in data.items) {
         counts[it.categoryId] = (counts[it.categoryId] ?? 0) + 1;
@@ -349,7 +349,7 @@ class _CatalogSectionState extends State<CatalogSection> {
   @override
   Widget build(BuildContext context) {
     final favs = _favs;
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_loading) return const LoadingView();
     if (_error != null) return ErrorView(message: _error!, onRetry: _load);
 
     return Focus(
