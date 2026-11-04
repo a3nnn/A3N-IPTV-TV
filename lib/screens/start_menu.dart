@@ -26,7 +26,32 @@ class _StartMenuState extends State<StartMenu> {
     if (mounted) setState(() => _continue = WatchHistory.continueList());
   }
 
-  void _remove(WatchEntry e) {
+  Future<void> _remove(WatchEntry e) async {
+    final name = e.isEpisode
+        ? '${e.seriesName}  ·  ${tr('S', 'م')}${e.season} ${tr('E', 'ح')}${e.episodeNum}'
+        : e.title;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppConfig.surface,
+        title: Text(tr('Stop watching?', 'إيقاف المشاهدة؟')),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 10),
+            Text(tr('Are you sure you want to remove it from Continue watching?', 'هل أنت متأكد إنك تبي تشيله من تابع المشاهدة؟')),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Yes', 'نعم'))),
+          // "No" has the focus, so a stray OK removes nothing.
+          FilledButton(autofocus: true, onPressed: () => Navigator.pop(ctx, false), child: Text(tr('No', 'لا'))),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
     WatchHistory.remove(e.key);
     setState(() => _continue = WatchHistory.continueList());
     showToast(context, tr('Removed from Continue watching', 'تمت الإزالة من تابع المشاهدة'));
@@ -42,17 +67,17 @@ class _StartMenuState extends State<StartMenu> {
       (3, Icons.settings_rounded, tr('Settings', 'الإعدادات')),
     ];
     return ListView(
-      padding: const EdgeInsets.fromLTRB(40, 22, 40, 24),
+      padding: const EdgeInsets.fromLTRB(40, 16, 40, 12),
       children: [
         _MenuTile(
           icon: Icons.live_tv_rounded,
           label: tr('Live TV', 'البث المباشر'),
-          height: 150,
+          height: 104,
           big: true,
           autofocus: true, // the remote always starts on Live TV
           onTap: () => widget.onSelect(0),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
         Row(
           children: [
             for (var i = 0; i < small.length; i++) ...[
@@ -61,7 +86,7 @@ class _StartMenuState extends State<StartMenu> {
                 child: _MenuTile(
                   icon: small[i].$2,
                   label: small[i].$3,
-                  height: 104,
+                  height: 76,
                   onTap: () => widget.onSelect(small[i].$1),
                 ),
               ),
@@ -69,12 +94,12 @@ class _StartMenuState extends State<StartMenu> {
           ],
         ),
         if (_continue.isNotEmpty) ...[
-          const SizedBox(height: 22),
+          const SizedBox(height: 16),
           Text(tr('Continue watching', 'تابع المشاهدة'),
               style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           SizedBox(
-            height: 214,
+            height: 184,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               clipBehavior: Clip.none,
@@ -140,10 +165,10 @@ class _MenuTileState extends State<_MenuTile> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(widget.icon, size: widget.big ? 64 : 40, color: _focused ? AppConfig.primary : AppConfig.textPrimary),
-                SizedBox(height: widget.big ? 12 : 8),
+                Icon(widget.icon, size: widget.big ? 46 : 28, color: _focused ? AppConfig.primary : AppConfig.textPrimary),
+                SizedBox(height: widget.big ? 8 : 4),
                 Text(widget.label,
-                    style: TextStyle(fontSize: widget.big ? 24 : 18, fontWeight: FontWeight.w700)),
+                    style: TextStyle(fontSize: widget.big ? 22 : 17, fontWeight: FontWeight.w700)),
               ],
             ),
           ),
@@ -175,7 +200,7 @@ class _ContinueCardState extends State<_ContinueCard> {
         ? '${e.upNext && !e.resumable ? '${tr('Next', 'التالية')}  ·  ' : ''}${tr('S', 'م')}${e.season}  ·  ${tr('E', 'ح')}${e.episodeNum}'
         : null;
     return SizedBox(
-      width: 112,
+      width: 98,
       child: RemoteLongPress(
         onTap: widget.onTap,
         onLongPress: widget.onLongPress,
@@ -192,7 +217,7 @@ class _ContinueCardState extends State<_ContinueCard> {
                 scale: _focused ? 1.06 : 1.0,
                 duration: Lite.anim(140),
                 child: Container(
-                  height: 156,
+                  height: 136,
                   decoration: BoxDecoration(
                     color: AppConfig.surfaceHigh,
                     borderRadius: BorderRadius.circular(10),
@@ -204,14 +229,14 @@ class _ContinueCardState extends State<_ContinueCard> {
                       fit: StackFit.expand,
                       children: [
                         NetImage(url: image, fallbackIcon: Icons.movie_outlined, cacheWidth: 260),
-                        const Center(child: Icon(Icons.play_circle_fill_rounded, size: 40, color: Colors.white70)),
+                        const Center(child: Icon(Icons.play_circle_fill_rounded, size: 34, color: Colors.white70)),
                         Positioned(left: 0, right: 0, bottom: 0, child: WatchProgressBar(fraction: e.fraction)),
                       ],
                     ),
                   ),
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
               if (sub != null)
                 Text(sub, style: const TextStyle(fontSize: 12, color: AppConfig.textSecondary)),
