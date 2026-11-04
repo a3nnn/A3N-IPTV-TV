@@ -118,6 +118,7 @@ void main() {
       if (m is List) lastMb = (m[1] as int) / 1048576;
     });
     final n = await _import(args(), port.sendPort);
+    await Future<void>.delayed(const Duration(milliseconds: 300)); // last progress messages
     port.close();
     final importMs = sw.elapsedMilliseconds;
     expect(n, 60000);
