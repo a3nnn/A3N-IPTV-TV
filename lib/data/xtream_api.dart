@@ -88,8 +88,15 @@ class XtreamApi {
   static final Map<String, List<Object?>> _mem = {};
   static final Map<String, Future<Object>> _pending = {};
 
-  /// Lists already updated from the server during this app start.
+  /// Lists already checked for an update during this app start.
   static final Set<String> _refreshed = {};
+
+  /// A saved list younger than this is not downloaded again.
+  static const Duration _refreshAfter = Duration(hours: 6);
+
+  /// Background updates run one after the other (never several big
+  /// downloads at once).
+  static Future<void> _queue = Future<void>.value();
 
   /// Completed once the account is signed in: the lists are only updated
   /// from the server after that, so the sign-in never has to share the
@@ -102,9 +109,14 @@ class XtreamApi {
   /// Bumped when a fresh list from the server is ready (open pages refresh).
   static final ValueNotifier<int> listsChanged = ValueNotifier<int>(0);
 
-  /// Copy in memory -> copy saved on the TV (any age, shown at once and
-  /// updated from the server in the background) -> the server (only when
-  /// nothing is saved yet, e.g. right after signing in).
+  /// What the list being opened is doing right now (shown under the
+  /// loading circle), null = nothing.
+  static final ValueNotifier<String?> loadStatus = ValueNotifier<String?>(null);
+
+  static String _mb(int bytes) => (bytes / (1024 * 1024)).toStringAsFixed(1);
+
+  /// Copy in memory -> copy saved on the TV (any age, shown at once) -> the
+  /// server (only when nothing is saved yet, e.g. right after signing in).
   Future<List<T>> _listOf<T>(String action, T Function(Map<String, dynamic>) fromJson) async {
     final name = _listName(action);
     final m = _mem[name];
@@ -115,31 +127,55 @@ class XtreamApi {
 
   Future<List<T>> _load<T>(String action, T Function(Map<String, dynamic>) fromJson) async {
     final name = _listName(action);
-    final saved = await DiskCache.readList(_slimName(action)) ?? await DiskCache.readList(name);
-    if (saved != null) {
-      try {
-        final bytes = saved.$1;
-        final list = await Isolate.run(() => _parseList<T>(bytes, fromJson));
-        _mem[name] ??= list;
-        if (_refreshed.add(name)) {
-          unawaited(_signedIn.future
-              .then((_) => Future<void>.delayed(const Duration(seconds: 3)))
-              .then((_) => _refresh<T>(action, fromJson)));
+    loadStatus.value = tr('Reading the saved list...', 'جاري قراءة القائمة المحفوظة...');
+    try {
+      final saved = await DiskCache.readList(_slimName(action)) ?? await DiskCache.readList(name);
+      if (saved != null) {
+        try {
+          loadStatus.value = tr('Preparing the list...', 'جاري تجهيز القائمة...');
+          final bytes = saved.$1;
+          final list = await Isolate.run(() => _parseList<T>(bytes, fromJson));
+          _mem[name] ??= list;
+          // The old full-size copy, or older than 6 hours: update it later.
+          final old = saved.$2 > _refreshAfter || !(await DiskCache.hasList(_slimName(action)));
+          if (old && _refreshed.add(name)) _queueRefresh<T>(action, fromJson);
+          return _mem[name]! as List<T>;
+        } catch (_) {
+          await DiskCache.deleteList(_slimName(action));
+          await DiskCache.deleteList(name);
         }
-        return _mem[name]! as List<T>;
-      } catch (_) {
-        await DiskCache.deleteList(_slimName(action));
-        await DiskCache.deleteList(name);
       }
+      _refreshed.add(name);
+      final list = await _fromServer<T>(action, fromJson, showProgress: true);
+      _mem[name] = list;
+      return list;
+    } finally {
+      loadStatus.value = null;
     }
-    _refreshed.add(name);
-    final list = await _fromServer<T>(action, fromJson);
-    _mem[name] = list;
-    return list;
   }
 
-  Future<List<T>> _fromServer<T>(String action, T Function(Map<String, dynamic>) fromJson) async {
-    final raw = await _fetch({'action': action});
+  void _queueRefresh<T>(String action, T Function(Map<String, dynamic>) fromJson) {
+    _queue = _queue.then((_) async {
+      await _signedIn.future;
+      await Future<void>.delayed(const Duration(seconds: 3));
+      try {
+        final list = await _fromServer<T>(action, fromJson);
+        _mem[_listName(action)] = list;
+        listsChanged.value++;
+      } catch (_) {}
+    });
+  }
+
+  Future<List<T>> _fromServer<T>(String action, T Function(Map<String, dynamic>) fromJson, {bool showProgress = false}) async {
+    if (showProgress) loadStatus.value = tr('Downloading the list from the server...', 'جاري تنزيل القائمة من السيرفر...');
+    final raw = await _fetchList(
+      action,
+      onProgress: !showProgress
+          ? null
+          : (n) => loadStatus.value =
+              tr('Downloading the list from the server... ${_mb(n)} MB', 'جاري تنزيل القائمة من السيرفر... ${_mb(n)} ميقا'),
+    );
+    if (showProgress) loadStatus.value = tr('Preparing the list...', 'جاري تجهيز القائمة...');
     final keys = _fields[action];
     final r = await Isolate.run(() => _parseAndSlim<T>(raw, fromJson, keys)).catchError(
         (Object _) => throw XtreamException(tr('Unexpected response from the server.', 'رد غير متوقع من السيرفر.')));
@@ -150,17 +186,56 @@ class XtreamApi {
     return r.$1;
   }
 
-  Future<void> _refresh<T>(String action, T Function(Map<String, dynamic>) fromJson) async {
+  /// Downloads a (big) list. Gives up only when nothing arrives for 30 s
+  /// (a slow server still gets there), reporting the size so far.
+  Future<Uint8List> _fetchList(String action, {void Function(int bytes)? onProgress}) async {
+    final uri = Uri.parse('$host/player_api.php').replace(queryParameters: {
+      'username': username,
+      'password': password,
+      'action': action,
+    });
+    final client = http.Client();
     try {
-      final list = await _fromServer<T>(action, fromJson);
-      _mem[_listName(action)] = list;
-      listsChanged.value++;
-    } catch (_) {}
+      final req = http.Request('GET', uri)..headers['User-Agent'] = AppConfig.userAgent;
+      final http.StreamedResponse res;
+      try {
+        res = await client.send(req).timeout(const Duration(seconds: 30));
+      } catch (_) {
+        throw XtreamException(tr('Could not reach the server. Check your internet connection.', 'ما قدرنا نوصل للسيرفر. تأكد من الإنترنت.'));
+      }
+      if (res.statusCode == 401 || res.statusCode == 403) {
+        throw XtreamException(tr('Access denied by the server (${res.statusCode}).', 'السيرفر رفض الدخول (${res.statusCode}).'));
+      }
+      if (res.statusCode != 200) {
+        throw XtreamException(tr('Server error (${res.statusCode}).', 'خطأ في السيرفر (${res.statusCode}).'));
+      }
+      final out = BytesBuilder(copy: false);
+      var last = DateTime(2000);
+      try {
+        await for (final chunk in res.stream.timeout(const Duration(seconds: 30))) {
+          out.add(chunk);
+          final now = DateTime.now();
+          if (onProgress != null && now.difference(last) > const Duration(milliseconds: 300)) {
+            last = now;
+            onProgress(out.length);
+          }
+        }
+      } on XtreamException {
+        rethrow;
+      } catch (_) {
+        throw XtreamException(tr('The server stopped sending the list. Check your internet connection.', 'السيرفر وقف وهو يرسل القائمة. تأكد من الإنترنت.'));
+      }
+      onProgress?.call(out.length);
+      return out.takeBytes();
+    } finally {
+      client.close();
+    }
   }
 
   /// Reads the saved lists into memory right when the app starts (before the
   /// sign-in finishes), the section used last first, so opening a section
-  /// is instant. [onlyFirst] = weak devices: just that one section.
+  /// is instant. Never uses the internet. [onlyFirst] = weak devices: just
+  /// that one section.
   static void preload({required String host, required String username, required String password, required int firstSection, bool onlyFirst = false}) {
     final api = XtreamApi(host: host, username: username, password: password);
     final jobs = <int, List<(String, Future<Object> Function())>>{
@@ -172,7 +247,6 @@ class XtreamApi {
     unawaited(() async {
       for (final i in onlyFirst ? order.take(1) : order) {
         for (final (action, job) in jobs[i]!) {
-          // Only what is already saved on the TV: never the server here.
           final saved = await DiskCache.hasList(api._slimName(action)) || await DiskCache.hasList(api._listName(action));
           if (!saved) continue;
           try {
@@ -180,6 +254,7 @@ class XtreamApi {
           } catch (_) {}
         }
       }
+      loadStatus.value = null;
     }());
   }
 

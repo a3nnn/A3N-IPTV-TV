@@ -23,6 +23,11 @@ class DiskCache {
   static int _running = 0;
   static final List<Completer<void>> _waiting = [];
 
+  /// Completed once the folders are ready (init isn't awaited at start, so
+  /// the list functions wait for it instead of finding nothing).
+  static final Completer<void> _ready = Completer<void>();
+  static Future<void> _waitReady() => _ready.future.timeout(const Duration(seconds: 5), onTimeout: () {});
+
   static Future<void> init() async {
     try {
       final tmp = await getTemporaryDirectory();
@@ -38,7 +43,10 @@ class DiskCache {
         } catch (_) {}
         unawaited(_trim());
       }());
-    } catch (_) {}
+    } catch (_) {
+    } finally {
+      if (!_ready.isCompleted) _ready.complete();
+    }
   }
 
   /// Short, file-name-safe key for a text (FNV-1a hash).
@@ -164,6 +172,7 @@ class DiskCache {
 
   /// A copy of this list is saved on the TV.
   static Future<bool> hasList(String name) async {
+    await _waitReady();
     try {
       final f = _listFile(name);
       return f != null && await f.exists();
@@ -174,6 +183,7 @@ class DiskCache {
 
   /// Saved copy of a list and how old it is, or null.
   static Future<(Uint8List, Duration)?> readList(String name) async {
+    await _waitReady();
     try {
       final f = _listFile(name);
       if (f == null || !await f.exists()) return null;
@@ -185,6 +195,7 @@ class DiskCache {
   }
 
   static Future<void> writeList(String name, Uint8List bytes) async {
+    await _waitReady();
     try {
       final f = _listFile(name);
       if (f == null || bytes.length < 2) return;
@@ -195,6 +206,7 @@ class DiskCache {
   }
 
   static Future<void> deleteList(String name) async {
+    await _waitReady();
     try {
       await _listFile(name)?.delete();
     } catch (_) {}
