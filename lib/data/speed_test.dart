@@ -55,12 +55,38 @@ class SpeedTest {
     }
   }
 
-  /// General internet speed (Cloudflare's speed test file).
-  static Future<double> internet(void Function(double mbps) onProgress) => _download(
-        Uri.parse('https://speed.cloudflare.com/__down?bytes=200000000'),
-        8,
-        onProgress,
-      );
+  /// General internet speed: small files from Cloudflare's speed test, one
+  /// after the other, for about 8 s (one big file is refused).
+  static Future<double> internet(void Function(double mbps) onProgress) async {
+    final sw = Stopwatch()..start();
+    var bytes = 0;
+    var ok = false;
+    double speed() {
+      final t = sw.elapsedMicroseconds / 1e6;
+      return t > 0 ? bytes * 8 / t / 1e6 : 0;
+    }
+
+    final client = http.Client();
+    try {
+      while (sw.elapsed.inSeconds < 8) {
+        final res = await client
+            .send(http.Request('GET', Uri.parse('https://speed.cloudflare.com/__down?bytes=25000000')))
+            .timeout(const Duration(seconds: 10));
+        if (res.statusCode != 200) throw Exception('HTTP ${res.statusCode}');
+        ok = true;
+        await for (final chunk in res.stream.timeout(const Duration(seconds: 10))) {
+          bytes += chunk.length;
+          onProgress(speed());
+          if (sw.elapsed.inSeconds >= 8) break;
+        }
+      }
+    } catch (e) {
+      if (!ok) rethrow;
+    } finally {
+      client.close();
+    }
+    return speed();
+  }
 
   /// Time for the channels server to answer (best of 3), in ms.
   static Future<int?> ping() async {
