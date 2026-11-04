@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../config.dart';
 import '../data/license_service.dart';
@@ -22,7 +23,11 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   late final TextEditingController _user = TextEditingController(text: widget.initialUsername ?? '');
-  final TextEditingController _pass = TextEditingController();
+  // Filled in when the account is still saved (e.g. the server couldn't be
+  // reached at start): OK on "Sign in" is enough.
+  late final TextEditingController _pass = TextEditingController(text: Storage.password ?? '');
+  final FocusNode _userBox = FocusNode();
+  final FocusNode _passBox = FocusNode();
   final FocusNode _passFocus = FocusNode();
   bool _loading = false;
   bool _obscure = true;
@@ -39,6 +44,8 @@ class _LoginScreenState extends State<LoginScreen> {
     _user.dispose();
     _pass.dispose();
     _passFocus.dispose();
+    _userBox.dispose();
+    _passBox.dispose();
     super.dispose();
   }
 
@@ -60,6 +67,7 @@ class _LoginScreenState extends State<LoginScreen> {
       await Storage.setHost(api.host);
       Session.api = api;
       Session.account = account;
+      XtreamApi.markSignedIn();
       final license = await LicenseService.check(username: u);
       if (!mounted) return;
       if (license.blocked) {
@@ -111,30 +119,41 @@ class _LoginScreenState extends State<LoginScreen> {
                   children: [
                     const Center(child: BrandMark(size: 52)),
                     const SizedBox(height: 34),
-                    TextField(
-                      controller: _user,
-                      autofocus: true,
-                      enabled: !_loading,
-                      textInputAction: TextInputAction.next,
-                      onSubmitted: (_) => _passFocus.requestFocus(),
-                      decoration: InputDecoration(
-                        hintText: tr('Username', 'اسم المستخدم'),
-                        prefixIcon: const Icon(Icons.person_outline_rounded),
+                    _RemoteField(
+                      box: _userBox,
+                      autofocus: _user.text.trim().isEmpty || _pass.text.trim().isEmpty,
+                      onSubmitted: () => _passBox.requestFocus(),
+                      builder: (fieldNode) => TextField(
+                        controller: _user,
+                        focusNode: fieldNode,
+                        enabled: !_loading,
+                        textInputAction: TextInputAction.next,
+                        onSubmitted: (_) => _passBox.requestFocus(),
+                        decoration: InputDecoration(
+                          hintText: tr('Username', 'اسم المستخدم'),
+                          prefixIcon: const Icon(Icons.person_outline_rounded),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 14),
-                    TextField(
-                      controller: _pass,
-                      focusNode: _passFocus,
-                      enabled: !_loading,
-                      obscureText: _obscure,
-                      onSubmitted: (_) => _submit(),
-                      decoration: InputDecoration(
-                        hintText: tr('Password', 'كلمة المرور'),
-                        prefixIcon: const Icon(Icons.lock_outline_rounded),
-                        suffixIcon: IconButton(
-                          icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
-                          onPressed: () => setState(() => _obscure = !_obscure),
+                    _RemoteField(
+                      box: _passBox,
+                      onSubmitted: _submit,
+                      builder: (fieldNode) => TextField(
+                        controller: _pass,
+                        focusNode: fieldNode,
+                        enabled: !_loading,
+                        obscureText: _obscure,
+                        onSubmitted: (_) => _submit(),
+                        decoration: InputDecoration(
+                          hintText: tr('Password', 'كلمة المرور'),
+                          prefixIcon: const Icon(Icons.lock_outline_rounded),
+                          suffixIcon: ExcludeFocus(
+                            child: IconButton(
+                              icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                              onPressed: () => setState(() => _obscure = !_obscure),
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -146,6 +165,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     SizedBox(
                       height: 48,
                       child: FilledButton(
+                        autofocus: _user.text.trim().isNotEmpty && _pass.text.trim().isNotEmpty,
                         onPressed: _loading ? null : _submit,
                         child: _loading
                             ? const SizedBox(
@@ -162,6 +182,109 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+
+/// A text box for the TV remote: the remote lands on the box without
+/// opening the keyboard; OK opens the keyboard to type; ▲ ▼ always leave
+/// the box (even if a TV's keyboard doesn't take the remote's arrows).
+class _RemoteField extends StatefulWidget {
+  final FocusNode box;
+  final bool autofocus;
+  final VoidCallback onSubmitted;
+  final Widget Function(FocusNode fieldNode) builder;
+  const _RemoteField({required this.box, required this.onSubmitted, required this.builder, this.autofocus = false});
+
+  @override
+  State<_RemoteField> createState() => _RemoteFieldState();
+}
+
+class _RemoteFieldState extends State<_RemoteField> {
+  late final FocusNode _field = FocusNode(canRequestFocus: false, onKeyEvent: _fieldKeys);
+  bool _boxFocused = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _field.addListener(() {
+      // Typing finished (keyboard closed / focus moved): back to a plain box.
+      if (!_field.hasFocus && _field.canRequestFocus) {
+        _field.canRequestFocus = false;
+        if (mounted) setState(() {});
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _field.dispose();
+    super.dispose();
+  }
+
+  void _edit() {
+    _field.canRequestFocus = true;
+    _field.requestFocus();
+    setState(() {});
+  }
+
+  void _leave(TraversalDirection dir) {
+    widget.box.requestFocus();
+    _field.canRequestFocus = false;
+    SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+    WidgetsBinding.instance.addPostFrameCallback((_) => widget.box.focusInDirection(dir));
+  }
+
+  KeyEventResult _fieldKeys(FocusNode node, KeyEvent e) {
+    if (e is! KeyDownEvent) return KeyEventResult.ignored;
+    final k = e.logicalKey;
+    if (k == LogicalKeyboardKey.arrowDown) {
+      _leave(TraversalDirection.down);
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.arrowUp) {
+      _leave(TraversalDirection.up);
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.enter || k == LogicalKeyboardKey.select || k == LogicalKeyboardKey.numpadEnter) {
+      _leave(TraversalDirection.down);
+      widget.onSubmitted();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  KeyEventResult _boxKeys(FocusNode node, KeyEvent e) {
+    if (e is! KeyDownEvent) return KeyEventResult.ignored;
+    final k = e.logicalKey;
+    if (k == LogicalKeyboardKey.select || k == LogicalKeyboardKey.enter || k == LogicalKeyboardKey.numpadEnter) {
+      _edit();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Focus(
+      focusNode: widget.box,
+      autofocus: widget.autofocus,
+      onKeyEvent: _boxKeys,
+      onFocusChange: (f) => setState(() => _boxFocused = f),
+      child: GestureDetector(
+        onTap: _edit,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: _boxFocused ? AppConfig.textPrimary : Colors.transparent,
+              width: 2.5,
+            ),
+          ),
+          child: widget.builder(_field),
+        ),
       ),
     );
   }

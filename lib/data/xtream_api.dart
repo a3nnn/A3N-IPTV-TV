@@ -91,6 +91,14 @@ class XtreamApi {
   /// Lists already updated from the server during this app start.
   static final Set<String> _refreshed = {};
 
+  /// Completed once the account is signed in: the lists are only updated
+  /// from the server after that, so the sign-in never has to share the
+  /// internet connection with big downloads.
+  static final Completer<void> _signedIn = Completer<void>();
+  static void markSignedIn() {
+    if (!_signedIn.isCompleted) _signedIn.complete();
+  }
+
   /// Bumped when a fresh list from the server is ready (open pages refresh).
   static final ValueNotifier<int> listsChanged = ValueNotifier<int>(0);
 
@@ -113,7 +121,11 @@ class XtreamApi {
         final bytes = saved.$1;
         final list = await Isolate.run(() => _parseList<T>(bytes, fromJson));
         _mem[name] ??= list;
-        if (_refreshed.add(name)) unawaited(_refresh<T>(action, fromJson));
+        if (_refreshed.add(name)) {
+          unawaited(_signedIn.future
+              .then((_) => Future<void>.delayed(const Duration(seconds: 3)))
+              .then((_) => _refresh<T>(action, fromJson)));
+        }
         return _mem[name]! as List<T>;
       } catch (_) {
         await DiskCache.deleteList(_slimName(action));
@@ -151,15 +163,18 @@ class XtreamApi {
   /// is instant. [onlyFirst] = weak devices: just that one section.
   static void preload({required String host, required String username, required String password, required int firstSection, bool onlyFirst = false}) {
     final api = XtreamApi(host: host, username: username, password: password);
-    final jobs = <int, List<Future<Object> Function()>>{
-      0: [api.liveCategories, api.liveStreams],
-      1: [api.vodCategories, api.vodStreams],
-      2: [api.seriesCategories, api.series],
+    final jobs = <int, List<(String, Future<Object> Function())>>{
+      0: [('get_live_categories', api.liveCategories), ('get_live_streams', api.liveStreams)],
+      1: [('get_vod_categories', api.vodCategories), ('get_vod_streams', api.vodStreams)],
+      2: [('get_series_categories', api.seriesCategories), ('get_series', api.series)],
     };
     final order = [if (jobs.containsKey(firstSection)) firstSection, ...[0, 2, 1].where((i) => i != firstSection)];
     unawaited(() async {
       for (final i in onlyFirst ? order.take(1) : order) {
-        for (final job in jobs[i]!) {
+        for (final (action, job) in jobs[i]!) {
+          // Only what is already saved on the TV: never the server here.
+          final saved = await DiskCache.hasList(api._slimName(action)) || await DiskCache.hasList(api._listName(action));
+          if (!saved) continue;
           try {
             await job();
           } catch (_) {}

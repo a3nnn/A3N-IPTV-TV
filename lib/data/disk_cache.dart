@@ -162,6 +162,16 @@ class DiskCache {
     return dir == null ? null : File('${dir.path}/${key(name)}.json');
   }
 
+  /// A copy of this list is saved on the TV.
+  static Future<bool> hasList(String name) async {
+    try {
+      final f = _listFile(name);
+      return f != null && await f.exists();
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Saved copy of a list and how old it is, or null.
   static Future<(Uint8List, Duration)?> readList(String name) async {
     try {
