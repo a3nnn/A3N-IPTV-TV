@@ -114,7 +114,8 @@ class Storage {
 
   /// Play the channel in the small preview while browsing.
   /// Off in light mode (Lite) whatever the setting says.
-  static bool get previewEnabled => !liteMode && previewEnabledSetting;
+  /// Always on, except in light mode.
+  static bool get previewEnabled => !liteMode;
   static bool get previewEnabledSetting => _p.getBool('preview_enabled') ?? true;
 
   /// Video player engine: 'mpv' (default) or 'exo' (Android system player,
