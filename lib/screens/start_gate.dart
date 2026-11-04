@@ -27,6 +27,19 @@ class _StartGateState extends State<StartGate> {
     final p = Storage.password;
     String? error;
 
+    // Start reading the saved channel / movie / series lists right away,
+    // while the app signs in, so the sections open at once.
+    final host = Storage.host;
+    if (u != null && p != null && host != null && host.isNotEmpty) {
+      XtreamApi.preload(
+        host: host,
+        username: u,
+        password: p,
+        firstSection: Storage.lastSection,
+        onlyFirst: Storage.weakDevice,
+      );
+    }
+
     // Ask "is this device blocked?" while we sign in (runs in parallel).
     final license = LicenseService.check(username: u ?? '', opened: true);
 

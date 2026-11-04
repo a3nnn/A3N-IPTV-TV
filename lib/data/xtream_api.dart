@@ -59,79 +59,113 @@ class XtreamApi {
     return data.whereType<Map>().map((e) => fromJson(Map<String, dynamic>.from(e))).toList();
   }
 
-  /// Movie and series lists kept ready in memory after the first opening, so
-  /// going back to the section shows them at once. Replaced by the fresh copy
-  /// as soon as the background download finishes (new titles show without
-  /// reopening the app).
-  static final Map<String, List<Object?>> _mem = {};
-
-  /// Bumped when a fresh movie / series list is ready (open pages refresh).
-  static final ValueNotifier<int> listsChanged = ValueNotifier<int>(0);
-  static const Set<String> _keepInMemory = {
-    'get_vod_categories', 'get_vod_streams', 'get_series_categories', 'get_series',
+  /// The only fields the lists use. The copy saved on the TV keeps just
+  /// these (the server's list also has plots, cast, backdrops...), so it is
+  /// several times smaller and much faster to read.
+  static const Map<String, List<String>> _fields = {
+    'get_live_categories': ['category_id', 'category_name'],
+    'get_vod_categories': ['category_id', 'category_name'],
+    'get_series_categories': ['category_id', 'category_name'],
+    'get_live_streams': ['stream_id', 'num', 'name', 'stream_icon', 'category_id'],
+    'get_vod_streams': ['stream_id', 'name', 'stream_icon', 'category_id', 'rating', 'container_extension'],
+    'get_series': ['series_id', 'name', 'cover', 'category_id', 'rating'],
   };
 
-  Future<List<T>> _listOf<T>(String action, T Function(Map<String, dynamic>) fromJson) async {
-    final name = _listName(action);
-    final keep = _keepInMemory.contains(action);
-    if (keep) {
-      final m = _mem[name];
-      if (m != null) return m as List<T>;
-    }
-    final bytes = await _cachedFetch(
-      action,
-      onFresh: !keep
-          ? null
-          : (fresh) async {
-              try {
-                _mem[name] = await Isolate.run(() => _parseList<T>(fresh, fromJson));
-                listsChanged.value++;
-              } catch (_) {}
-            },
-    );
-    try {
-      final list = await Isolate.run(() => _parseList<T>(bytes, fromJson));
-      if (!keep) return list;
-      // If the fresh copy got here first, keep it.
-      return (_mem[name] ??= list) as List<T>;
-    } catch (_) {
-      await DiskCache.deleteList(name);
-      throw XtreamException(tr('Unexpected response from the server.', 'رد غير متوقع من السيرفر.'));
-    }
+  /// Server answer -> the list + the small copy to save.
+  static (List<T>, Uint8List) _parseAndSlim<T>(Uint8List bytes, T Function(Map<String, dynamic>) fromJson, List<String>? keys) {
+    final data = _decode(bytes);
+    if (data is! List) return (<T>[], Uint8List(0));
+    final maps = data.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    final list = maps.map(fromJson).toList();
+    final slim = keys == null ? maps : [for (final m in maps) {for (final k in keys) if (m.containsKey(k)) k: m[k]}];
+    return (list, Uint8List.fromList(utf8.encode(jsonEncode(slim))));
   }
 
   String _listName(String action) => '$host|$username|$action';
+  String _slimName(String action) => '${_listName(action)}|s1';
 
-  /// Lists already updated in the background during this app start.
+  /// Lists kept ready in memory (until the app is closed).
+  static final Map<String, List<Object?>> _mem = {};
+  static final Map<String, Future<Object>> _pending = {};
+
+  /// Lists already updated from the server during this app start.
   static final Set<String> _refreshed = {};
 
-  /// Uses the copy saved on the TV so the screen opens at once, and quietly
-  /// downloads a fresh copy for next time. A copy older than a day is only
-  /// used if the server can't be reached.
-  Future<Uint8List> _cachedFetch(String action, {Future<void> Function(Uint8List fresh)? onFresh}) async {
+  /// Bumped when a fresh list from the server is ready (open pages refresh).
+  static final ValueNotifier<int> listsChanged = ValueNotifier<int>(0);
+
+  /// Copy in memory -> copy saved on the TV (any age, shown at once and
+  /// updated from the server in the background) -> the server (only when
+  /// nothing is saved yet, e.g. right after signing in).
+  Future<List<T>> _listOf<T>(String action, T Function(Map<String, dynamic>) fromJson) async {
     final name = _listName(action);
-    final saved = await DiskCache.readList(name);
-    if (saved != null && saved.$2 < const Duration(hours: 24)) {
-      if (_refreshed.add(name)) {
-        unawaited(() async {
-          try {
-            final b = await _fetch({'action': action});
-            await DiskCache.writeList(name, b);
-            if (onFresh != null) await onFresh(b);
-          } catch (_) {}
-        }());
+    final m = _mem[name];
+    if (m != null) return m as List<T>;
+    final job = _pending[name] ??= _load<T>(action, fromJson).whenComplete(() => _pending.remove(name));
+    return (await job) as List<T>;
+  }
+
+  Future<List<T>> _load<T>(String action, T Function(Map<String, dynamic>) fromJson) async {
+    final name = _listName(action);
+    final saved = await DiskCache.readList(_slimName(action)) ?? await DiskCache.readList(name);
+    if (saved != null) {
+      try {
+        final bytes = saved.$1;
+        final list = await Isolate.run(() => _parseList<T>(bytes, fromJson));
+        _mem[name] ??= list;
+        if (_refreshed.add(name)) unawaited(_refresh<T>(action, fromJson));
+        return _mem[name]! as List<T>;
+      } catch (_) {
+        await DiskCache.deleteList(_slimName(action));
+        await DiskCache.deleteList(name);
       }
-      return saved.$1;
     }
+    _refreshed.add(name);
+    final list = await _fromServer<T>(action, fromJson);
+    _mem[name] = list;
+    return list;
+  }
+
+  Future<List<T>> _fromServer<T>(String action, T Function(Map<String, dynamic>) fromJson) async {
+    final raw = await _fetch({'action': action});
+    final keys = _fields[action];
+    final r = await Isolate.run(() => _parseAndSlim<T>(raw, fromJson, keys)).catchError(
+        (Object _) => throw XtreamException(tr('Unexpected response from the server.', 'رد غير متوقع من السيرفر.')));
+    unawaited(() async {
+      await DiskCache.writeList(_slimName(action), r.$2);
+      await DiskCache.deleteList(_listName(action)); // old full-size copy
+    }());
+    return r.$1;
+  }
+
+  Future<void> _refresh<T>(String action, T Function(Map<String, dynamic>) fromJson) async {
     try {
-      final fresh = await _fetch({'action': action});
-      _refreshed.add(name);
-      unawaited(DiskCache.writeList(name, fresh));
-      return fresh;
-    } catch (e) {
-      if (saved != null) return saved.$1;
-      rethrow;
-    }
+      final list = await _fromServer<T>(action, fromJson);
+      _mem[_listName(action)] = list;
+      listsChanged.value++;
+    } catch (_) {}
+  }
+
+  /// Reads the saved lists into memory right when the app starts (before the
+  /// sign-in finishes), the section used last first, so opening a section
+  /// is instant. [onlyFirst] = weak devices: just that one section.
+  static void preload({required String host, required String username, required String password, required int firstSection, bool onlyFirst = false}) {
+    final api = XtreamApi(host: host, username: username, password: password);
+    final jobs = <int, List<Future<Object> Function()>>{
+      0: [api.liveCategories, api.liveStreams],
+      1: [api.vodCategories, api.vodStreams],
+      2: [api.seriesCategories, api.series],
+    };
+    final order = [if (jobs.containsKey(firstSection)) firstSection, ...[0, 2, 1].where((i) => i != firstSection)];
+    unawaited(() async {
+      for (final i in onlyFirst ? order.take(1) : order) {
+        for (final job in jobs[i]!) {
+          try {
+            await job();
+          } catch (_) {}
+        }
+      }
+    }());
   }
 
   Future<dynamic> _get(Map<String, String> extra) async {
