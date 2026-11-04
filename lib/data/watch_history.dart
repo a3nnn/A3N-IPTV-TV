@@ -26,6 +26,10 @@ class WatchEntry {
   int updated; // ms since epoch
   bool done;
 
+  /// Episode added by itself after the one before it was finished
+  /// ("Next episode" in Continue watching, even before it is started).
+  bool upNext;
+
   WatchEntry({
     required this.key,
     required this.isEpisode,
@@ -42,12 +46,16 @@ class WatchEntry {
     this.duration = 0,
     this.updated = 0,
     this.done = false,
+    this.upNext = false,
   });
 
   double get fraction => duration > 0 ? (position / duration).clamp(0.0, 1.0) : 0.0;
 
   /// Worth offering "continue": started (over a minute in) and not finished.
   bool get resumable => !done && position >= 60;
+
+  /// Shown in "Continue watching".
+  bool get inContinue => !done && (position >= 60 || upNext);
 
   Map<String, dynamic> toJson() => {
         'k': key,
@@ -65,6 +73,7 @@ class WatchEntry {
         'd': duration,
         'u': updated,
         'f': done,
+        if (upNext) 'n': true,
       };
 
   static WatchEntry? fromJson(dynamic j) {
@@ -86,6 +95,7 @@ class WatchEntry {
         duration: (j['d'] as num?)?.toInt() ?? 0,
         updated: (j['u'] as num?)?.toInt() ?? 0,
         done: j['f'] == true,
+        upNext: j['n'] == true,
       );
     } catch (_) {
       return null;
@@ -131,17 +141,21 @@ class WatchHistory {
   }
 
   /// "Continue watching": newest first, one entry per series.
+  /// For a series: the newest episode left half-way or the next episode
+  /// after a finished one. An episode only opened for a few seconds doesn't
+  /// hide the one left half-way. A series is dropped once its last episode
+  /// is finished.
   static List<WatchEntry> continueList({int max = 20}) {
-    final list = _map.values.where((e) => e.resumable).toList()
+    final list = _map.values.where((e) => e.inContinue).toList()
       ..sort((a, b) => b.updated.compareTo(a.updated));
     final seenSeries = <int>{};
     final out = <WatchEntry>[];
     for (final e in list) {
       if (e.isEpisode) {
-        if (!seenSeries.add(e.seriesId)) continue;
-        // A newer episode of the same series was started/finished: skip old one.
+        // A later episode was finished after this one (and there is no next one).
         final last = lastOfSeries(e.seriesId);
-        if (last != null && last.key != e.key) continue;
+        if (last != null && last.done && last.updated > e.updated) continue;
+        if (!seenSeries.add(e.seriesId)) continue;
       }
       out.add(e);
       if (out.length >= max) break;
@@ -159,8 +173,28 @@ class WatchHistory {
     final left = e.duration - position;
     e.done = e.duration > 0 && (position / e.duration >= 0.95 || (e.duration > 1200 && left < 120));
     if (e.done) e.position = 0;
+    if (e.done || position >= 60) e.upNext = false;
     e.updated = DateTime.now().millisecondsSinceEpoch;
     _map[e.key] = e;
+    _scheduleSave();
+  }
+
+  /// [next] follows an episode that was just finished: it goes to the front
+  /// of "Continue watching" as "Next episode".
+  static void queueNext(WatchEntry next) {
+    final now = DateTime.now().millisecondsSinceEpoch + 1;
+    final cur = _map[next.key];
+    if (cur != null && !cur.done) {
+      cur.updated = now;
+      if (!cur.resumable) cur.upNext = true;
+    } else {
+      next
+        ..position = 0
+        ..done = false
+        ..upNext = true
+        ..updated = now;
+      _map[next.key] = next;
+    }
     _scheduleSave();
   }
 

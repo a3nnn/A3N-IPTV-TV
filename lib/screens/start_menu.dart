@@ -171,7 +171,9 @@ class _ContinueCardState extends State<_ContinueCard> {
     final e = widget.entry;
     final image = e.isEpisode && e.seriesCover.isNotEmpty ? e.seriesCover : e.image;
     final title = e.isEpisode ? e.seriesName : e.title;
-    final sub = e.isEpisode ? '${tr('S', 'م')}${e.season}  ·  ${tr('E', 'ح')}${e.episodeNum}' : null;
+    final sub = e.isEpisode
+        ? '${e.upNext && !e.resumable ? '${tr('Next', 'التالية')}  ·  ' : ''}${tr('S', 'م')}${e.season}  ·  ${tr('E', 'ح')}${e.episodeNum}'
+        : null;
     return SizedBox(
       width: 112,
       child: RemoteLongPress(

@@ -48,6 +48,7 @@ NextEpisode? _nextOf(Series series, List<Episode> all, Episode e) {
   final n = all[i + 1];
   return NextEpisode(
     label: 'S${two(n.season)}E${two(n.episodeNum)}',
+    entry: _episodeEntry(series, n),
     open: (ctx) {
       final api = Session.api;
       if (api == null) return;

@@ -19,7 +19,10 @@ import '../l10n.dart';
 class NextEpisode {
   final String label;
   final void Function(BuildContext context) open;
-  const NextEpisode({required this.label, required this.open});
+
+  /// Saved to "Continue watching" once the current episode is finished.
+  final WatchEntry? entry;
+  const NextEpisode({required this.label, required this.open, this.entry});
 }
 
 /// Full-screen player for movies and episodes, driven by the TV remote:
@@ -142,6 +145,8 @@ class _PlayerPageState extends State<PlayerPage> {
     final dur = _svc.duration.inSeconds;
     if (dur <= 0) return;
     WatchHistory.report(w, pos, dur);
+    final n = widget.next?.entry;
+    if (n != null && (WatchHistory.get(w.key)?.done ?? false)) WatchHistory.queueNext(n);
   }
 
   // ▼ moves the remote onto the buttons under the picture
