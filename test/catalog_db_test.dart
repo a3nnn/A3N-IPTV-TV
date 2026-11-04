@@ -1,5 +1,6 @@
 // Tests the lists database with a list as big as the real one (~70 MB of
 // series), served by a local fake server. Run on GitHub (test.yml).
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
@@ -111,6 +112,11 @@ void main() {
 
   test('big list: download + save + read, fast and light', () async {
     final rssBefore = ProcessInfo.currentRss;
+    var rssPeak = rssBefore;
+    final sampler = Timer.periodic(const Duration(milliseconds: 20), (_) {
+      final r = ProcessInfo.currentRss;
+      if (r > rssPeak) rssPeak = r;
+    });
     final sw = Stopwatch()..start();
     final port = ReceivePort();
     var lastMb = 0.0;
@@ -148,7 +154,8 @@ void main() {
     expect(s.rating, 7.5);
     expect(CatalogDb.updatedAt('user', 'series'), isNotNull);
     final dbMb = File(path).lengthSync() / 1048576;
-    final rssMb = (ProcessInfo.maxRss - rssBefore) / 1048576;
+    sampler.cancel();
+    final rssMb = (rssPeak - rssBefore) / 1048576;
     // ignore: avoid_print
     print('import ${importMs}ms, read ${readMs}ms, db ${dbMb.toStringAsFixed(1)} MB, extra peak RAM ~${rssMb.toStringAsFixed(0)} MB');
     expect(readMs, lessThan(5000));
