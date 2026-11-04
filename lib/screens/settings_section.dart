@@ -26,6 +26,7 @@ class _SettingsSectionState extends State<SettingsSection> {
   bool _lite = Storage.liteMode;
   String _engine = Storage.playerEngine;
   bool _compatible = Storage.compatibleDecoder;
+  bool _afr = Storage.matchFrameRate;
   String _subLang = Storage.subtitleLang;
   String _textSize = TextSize.value.value;
 
@@ -185,6 +186,18 @@ class _SettingsSectionState extends State<SettingsSection> {
           },
         ),
       ),
+      // Needs the frame rate of the video: main player only.
+      if (_engine != 'exo')
+        _SwitchRow(
+          title: tr('Match screen refresh rate (movies & series)', 'مطابقة معدل الشاشة (الأفلام والمسلسلات)'),
+          subtitle: tr('Smoother motion: the TV switches to the rate of the video (e.g. 50 Hz) while it plays. The screen goes black for a second when it switches, that is normal.',
+              'حركة أنعم: التلفزيون يتحوّل لمعدل الفيديو (مثل 50 هيرتز) وقت التشغيل. الشاشة تسوّد ثانية وقت التحويل، وهذا طبيعي.'),
+          value: _afr,
+          onChanged: (v) {
+            setState(() => _afr = v);
+            Storage.setMatchFrameRate(v);
+          },
+        ),
     ];
   }
 

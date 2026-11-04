@@ -42,6 +42,29 @@ class _HomeScreenState extends State<HomeScreen> {
   Timer? _licenseTimer;
   DateTime? _lastBack;
 
+  /// Movies (1) / Series (2) once opened stay in the tree, hidden and still,
+  /// so going back to them is instant (not with the weak-device options).
+  final Set<int> _alive = {};
+
+  Widget _kept(int i) => Visibility(
+        key: ValueKey('kept$i'),
+        visible: i == _index,
+        maintainState: true,
+        child: KeyedSubtree(key: _keys[i], child: i == 1 ? const MoviesSection() : const SeriesSection()),
+      );
+
+  /// [current] = what is on screen; the kept pages wait hidden under it.
+  Widget _withKept(Widget? current) {
+    if (Storage.weakDevice) {
+      _alive.clear();
+    } else if (_index == 1 || _index == 2) {
+      _alive.add(_index);
+    }
+    final kept = [for (final i in const [1, 2]) if (_alive.contains(i)) _kept(i)];
+    if (kept.isEmpty) return current ?? const SizedBox.shrink();
+    return Stack(fit: StackFit.expand, children: [...kept, if (current != null) current]);
+  }
+
   /// BACK on the main screen: full screen -> list, a section -> start menu,
   /// and only a second BACK within 2 seconds closes the app.
   void _onBack(bool didPop, Object? _) {
@@ -108,6 +131,8 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_index == 0) PlayerService.instance.stop();
     if (i >= 0) Storage.setLastSection(i);
     setState(() => _index = i);
+    // A page kept in the background: put the remote back where it was.
+    if (_alive.contains(i)) CatalogSection.reshow(i == 1 ? 'movies' : 'series');
   }
 
   Widget _section() {
@@ -136,12 +161,14 @@ class _HomeScreenState extends State<HomeScreen> {
             body: Column(
               children: [
                 const TopBar(),
-                Expanded(child: StartMenu(onSelect: _go)),
+                Expanded(child: _withKept(StartMenu(onSelect: _go))),
               ],
             ),
           );
         }
-        final section = KeyedSubtree(key: _keys[_index], child: _section());
+        final section = _withKept(
+          !Storage.weakDevice && (_index == 1 || _index == 2) ? null : KeyedSubtree(key: _keys[_index], child: _section()),
+        );
         if (fullscreen) {
           return Scaffold(backgroundColor: Colors.black, body: section);
         }

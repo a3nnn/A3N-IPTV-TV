@@ -123,6 +123,14 @@ class CatalogSection extends StatefulWidget {
 
   const CatalogSection({super.key, required this.section, required this.favKey, required this.load, required this.allLabel, required this.searchHint});
 
+  /// Set by the home screen when a page kept in the background is shown
+  /// again ('movies' / 'series'): the remote goes back where it was.
+  static final ValueNotifier<String?> reshown = ValueNotifier<String?>(null);
+  static void reshow(String section) {
+    reshown.value = null;
+    reshown.value = section;
+  }
+
   @override
   State<CatalogSection> createState() => _CatalogSectionState();
 }
@@ -143,10 +151,61 @@ class _CatalogSectionState extends State<CatalogSection> {
   void initState() {
     super.initState();
     _load();
+    XtreamApi.listsChanged.addListener(_reloadQuietly);
+    CatalogSection.reshown.addListener(_onReshown);
+    FocusManager.instance.addListener(_trackFocus);
+  }
+
+  // Remembers what had the remote's focus on this page.
+  final FocusNode _root = FocusNode(canRequestFocus: false, skipTraversal: true);
+  FocusNode? _lastFocus;
+  void _trackFocus() {
+    final f = FocusManager.instance.primaryFocus;
+    if (f != null && _root.hasFocus) _lastFocus = f;
+  }
+
+  void _onReshown() {
+    if (CatalogSection.reshown.value != widget.section || !mounted || _loading) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final f = _lastFocus;
+      if (f != null && f.context != null && f.canRequestFocus) {
+        f.requestFocus();
+      } else if (_focusItemId != null) {
+        _scrollToTarget();
+      }
+    });
+  }
+
+  /// A fresh list arrived in the background: show the new titles without a
+  /// loading screen, staying on the same category / search.
+  Future<void> _reloadQuietly() async {
+    if (_loading || _error != null) return;
+    try {
+      final data = await widget.load();
+      final counts = <String, int>{};
+      for (final it in data.items) {
+        counts[it.categoryId] = (counts[it.categoryId] ?? 0) + 1;
+      }
+      if (!mounted) return;
+      setState(() {
+        _data = data;
+        _counts = counts;
+        _refreshFavs();
+        if (_categoryId != _allId && _categoryId != _favId && !data.categories.any((c) => c.id == _categoryId)) {
+          _categoryId = _allId;
+        }
+        _applyFilter();
+      });
+    } catch (_) {}
   }
 
   @override
   void dispose() {
+    XtreamApi.listsChanged.removeListener(_reloadQuietly);
+    CatalogSection.reshown.removeListener(_onReshown);
+    FocusManager.instance.removeListener(_trackFocus);
+    _root.dispose();
     _searchCtrl.dispose();
     _gridScroll.dispose();
     _targetNode.dispose();
@@ -293,7 +352,9 @@ class _CatalogSectionState extends State<CatalogSection> {
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null) return ErrorView(message: _error!, onRetry: _load);
 
-    return Row(
+    return Focus(
+      focusNode: _root,
+      child: Row(
       children: [
         SizedBox(
           width: (MediaQuery.sizeOf(context).width * 0.28).clamp(220.0, 330.0),
@@ -379,6 +440,7 @@ class _CatalogSectionState extends State<CatalogSection> {
           ),
         ),
       ],
+    ),
     );
   }
 }

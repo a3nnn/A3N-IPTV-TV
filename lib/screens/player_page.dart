@@ -8,6 +8,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import '../config.dart';
 import '../data/storage.dart';
 import '../data/watch_history.dart';
+import '../player/frame_rate.dart';
 import '../player/player_service.dart';
 import '../utils.dart';
 import '../widgets/common.dart';
@@ -111,6 +112,7 @@ class _PlayerPageState extends State<PlayerPage> {
     super.initState();
     _started = widget.startAt <= Duration.zero;
     _svc.play(widget.url);
+    unawaited(_matchFrameRate());
     // Audio / subtitle choice: mpv only (the system player can't list them).
     if (!_svc.isExo) _tracksSub = _svc.player.stream.tracks.listen(_pickSubtitles);
     if (!_started) {
@@ -138,6 +140,22 @@ class _PlayerPageState extends State<PlayerPage> {
     if (mounted && _seekTimer?.isActive != true) setState(() => _seekTarget = null);
   }
 
+  /// Settings > Display > Match screen refresh rate (main player only).
+  Future<void> _matchFrameRate() async {
+    if (!Storage.matchFrameRate || _svc.isExo) return;
+    await Future<void>.delayed(const Duration(seconds: 1));
+    for (var i = 0; i < 12 && mounted; i++) {
+      if (_svc.currentUrl != widget.url) return;
+      var fps = double.tryParse(await _svc.property('container-fps')) ?? 0;
+      if (fps <= 0) fps = double.tryParse(await _svc.property('estimated-vf-fps')) ?? 0;
+      if (fps > 0) {
+        await FrameRateMatch.apply(fps);
+        return;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+    }
+  }
+
   void _savePosition() {
     final w = widget.watch;
     if (w == null || !_started) return;
@@ -154,6 +172,24 @@ class _PlayerPageState extends State<PlayerPage> {
   bool _inButtons = false;
   final FocusNode _tracksBtn = FocusNode();
   final FocusNode _playBtn = FocusNode();
+  final FocusNode _nextBtn = FocusNode();
+
+  /// The buttons on screen, left to right.
+  List<FocusNode> get _buttons => [_playBtn, if (!_svc.isExo) _tracksBtn, if (widget.next != null) _nextBtn];
+
+  /// On the buttons with no key pressed for 3 s: hide the bar, back to the video.
+  Timer? _buttonsTimer;
+  void _buttonsIdle() {
+    _buttonsTimer?.cancel();
+    _buttonsTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted || !_inButtons) return;
+      setState(() {
+        _inButtons = false;
+        _overlay = false;
+      });
+      _focus.requestFocus();
+    });
+  }
 
   void _enterButtons() {
     _hideTimer?.cancel();
@@ -161,12 +197,14 @@ class _PlayerPageState extends State<PlayerPage> {
       _overlay = true;
       _inButtons = true;
     });
+    _buttonsIdle();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _playBtn.requestFocus();
     });
   }
 
   void _leaveButtons() {
+    _buttonsTimer?.cancel();
     setState(() => _inButtons = false);
     _focus.requestFocus();
     _poke();
@@ -188,6 +226,9 @@ class _PlayerPageState extends State<PlayerPage> {
   void dispose() {
     _tracksBtn.dispose();
     _playBtn.dispose();
+    _nextBtn.dispose();
+    _buttonsTimer?.cancel();
+    FrameRateMatch.restoreSoon();
     if (!_left) {
       _savePosition();
       WatchHistory.saveNow();
@@ -251,6 +292,21 @@ class _PlayerPageState extends State<PlayerPage> {
         return KeyEventResult.handled;
       }
       if (k == LogicalKeyboardKey.arrowDown) return KeyEventResult.handled;
+      if (e is KeyDownEvent || e is KeyRepeatEvent) _buttonsIdle();
+      // ◀ ▶ move between the buttons on screen and stop at the first / last.
+      if (k == LogicalKeyboardKey.arrowLeft || k == LogicalKeyboardKey.arrowRight) {
+        if (e is KeyDownEvent || e is KeyRepeatEvent) {
+          final list = _buttons;
+          final i = list.indexWhere((n) => n.hasFocus);
+          final j = (i + (k == LogicalKeyboardKey.arrowRight ? 1 : -1)).clamp(0, list.length - 1);
+          if (i < 0) {
+            _playBtn.requestFocus();
+          } else if (j != i) {
+            list[j].requestFocus();
+          }
+        }
+        return KeyEventResult.handled;
+      }
       return KeyEventResult.ignored;
     }
     if (k == LogicalKeyboardKey.escape || k == LogicalKeyboardKey.goBack) {
@@ -305,10 +361,12 @@ class _PlayerPageState extends State<PlayerPage> {
   Future<void> _openTracks() async {
     if (_svc.isExo) return; // the system player can't list audio / subtitles
     _hideTimer?.cancel();
+    _buttonsTimer?.cancel();
     await showDialog<void>(context: context, builder: (_) => _TracksDialog(player: _svc.player));
     if (!mounted) return;
     if (_inButtons) {
       _tracksBtn.requestFocus();
+      _buttonsIdle();
     } else {
       _focus.requestFocus();
       _poke();
@@ -443,6 +501,7 @@ class _PlayerPageState extends State<PlayerPage> {
                             if (widget.next != null) ...[
                               const SizedBox(width: 10),
                               _RoundIconButton(
+                                focusNode: _nextBtn,
                                 icon: Icons.skip_next_rounded,
                                 iconSize: 28,
                                 tooltip: '${tr('Next episode', 'الحلقة التالية')}  ${widget.next!.label}',

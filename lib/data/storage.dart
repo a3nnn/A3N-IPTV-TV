@@ -112,6 +112,13 @@ class Storage {
   static bool get compatibleDecoder => _p.getBool('compatible_decoder') ?? false;
   static Future<void> setCompatibleDecoder(bool v) => _p.setBool('compatible_decoder', v);
 
+  /// Switch the TV's refresh rate to fit movies / episodes (main player only).
+  static bool get matchFrameRate => _p.getBool('match_frame_rate') ?? false;
+  static Future<void> setMatchFrameRate(bool v) => _p.setBool('match_frame_rate', v);
+
+  /// Any of the weak-device options is on (keeps the app as light as possible).
+  static bool get weakDevice => liteMode || playerEngine == 'exo';
+
   /// Play the channel in the small preview while browsing.
   /// Off in light mode (Lite) whatever the setting says.
   /// Always on, except in light mode.

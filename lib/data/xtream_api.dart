@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:isolate';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../config.dart';
@@ -63,6 +64,9 @@ class XtreamApi {
   /// as soon as the background download finishes (new titles show without
   /// reopening the app).
   static final Map<String, List<Object?>> _mem = {};
+
+  /// Bumped when a fresh movie / series list is ready (open pages refresh).
+  static final ValueNotifier<int> listsChanged = ValueNotifier<int>(0);
   static const Set<String> _keepInMemory = {
     'get_vod_categories', 'get_vod_streams', 'get_series_categories', 'get_series',
   };
@@ -81,6 +85,7 @@ class XtreamApi {
           : (fresh) async {
               try {
                 _mem[name] = await Isolate.run(() => _parseList<T>(fresh, fromJson));
+                listsChanged.value++;
               } catch (_) {}
             },
     );
