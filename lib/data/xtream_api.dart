@@ -75,6 +75,12 @@ class XtreamApi {
   /// (12.4 MB)" (shown under the loading circle), null = nothing.
   static final ValueNotifier<String?> loadStatus = ValueNotifier<String?>(null);
 
+  /// Same text for an update in the background (Settings shows it).
+  static final ValueNotifier<String?> updateStatus = ValueNotifier<String?>(null);
+
+  /// Sections a screen is waiting for (their download shows under the circle).
+  static final Set<String> _waiting = {};
+
   /// Section being updated in the background ('live' / 'vod' / 'series').
   static final ValueNotifier<String?> updating = ValueNotifier<String?>(null);
 
@@ -111,7 +117,12 @@ class XtreamApi {
       var data = await CatalogDb.read(username, sec);
       if (data == null) {
         // First time: download it now (with the progress shown).
-        await _download(sec);
+        _waiting.add(_key(sec));
+        try {
+          await _download(sec);
+        } finally {
+          _waiting.remove(_key(sec));
+        }
         loadStatus.value = tr('Opening the $name list...', 'جاري فتح قائمة $name...');
         data = await CatalogDb.read(username, sec);
       }
@@ -139,8 +150,9 @@ class XtreamApi {
           userAgent: AppConfig.userAgent,
           sec: sec,
           onProgress: (step, bytes, total) {
+            final out = _waiting.contains(k) ? loadStatus : updateStatus;
             if (step >= 3) {
-              loadStatus.value = tr('Saving the $name list...', 'جاري حفظ قائمة $name...');
+              out.value = tr('Saving the $name list...', 'جاري حفظ قائمة $name...');
               return;
             }
             final size = bytes <= 0
@@ -148,14 +160,15 @@ class XtreamApi {
                 : total > 0
                     ? ' (${_mb(bytes)} / ${_mb(total)} ${tr('MB', 'ميقا')})'
                     : ' (${_mb(bytes)} ${tr('MB', 'ميقا')})';
-            loadStatus.value = tr('Loading your $name list... $step/2$size', 'جاري تحميل قائمة $name... $step/2$size');
+            out.value = tr('Loading your $name list... $step/2$size', 'جاري تحميل قائمة $name... $step/2$size');
           },
         );
       } catch (e) {
         throw XtreamException(_downloadError('$e'));
       } finally {
         _downloads.remove(k);
-        loadStatus.value = null;
+        if (_waiting.contains(k)) loadStatus.value = null;
+        updateStatus.value = null;
         listsSaved.value++;
       }
     }();

@@ -809,7 +809,7 @@ class _ListsPanelState extends State<_ListsPanel> {
           Padding(
             padding: const EdgeInsetsDirectional.only(start: 10, top: 10),
             child: ValueListenableBuilder<String?>(
-              valueListenable: XtreamApi.loadStatus,
+              valueListenable: XtreamApi.updateStatus,
               builder: (context, s, _) => Text(s ?? '', style: const TextStyle(color: AppConfig.textSecondary)),
             ),
           ),
