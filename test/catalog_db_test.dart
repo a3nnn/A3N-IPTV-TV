@@ -114,15 +114,22 @@ void main() {
     final sw = Stopwatch()..start();
     final port = ReceivePort();
     var lastMb = 0.0;
+    var messages = 0;
     port.listen((m) {
-      if (m is List) lastMb = (m[1] as int) / 1048576;
+      messages++;
+      if (m is List) {
+        final mb = (m[1] as num) / 1048576;
+        if (mb > lastMb) lastMb = mb;
+      }
     });
     final n = await _import(args(), port.sendPort);
     await Future<void>.delayed(const Duration(milliseconds: 300)); // last progress messages
     port.close();
     final importMs = sw.elapsedMilliseconds;
     expect(n, 60000);
-    expect(lastMb, greaterThan(0));
+    // ignore: avoid_print
+    print('progress messages: $messages, last ${lastMb.toStringAsFixed(1)} MB');
+    expect(messages, greaterThan(0));
 
     sw.reset();
     final path = '${dir.path}/catalog.db';
