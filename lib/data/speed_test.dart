@@ -116,14 +116,19 @@ class SpeedTest {
     if (api == null) return null;
     await PlayerService.instance.stop();
     String? url;
+    // Only lists already saved on the TV (never a big download just for this).
     try {
-      final movies = await api.vodStreams();
-      if (movies.isNotEmpty) url = api.movieUrl(movies[movies.length ~/ 2]);
+      if (api.savedAt('vod') != null) {
+        final movies = await api.vodStreams();
+        if (movies.isNotEmpty) url = api.movieUrl(movies[movies.length ~/ 2]);
+      }
     } catch (_) {}
     if (url == null) {
       try {
-        final chans = await api.liveStreams();
-        if (chans.isNotEmpty) url = api.liveUrl(chans.first);
+        if (api.savedAt('live') != null) {
+          final chans = await api.liveStreams();
+          if (chans.isNotEmpty) url = api.liveUrl(chans.first);
+        }
       } catch (_) {}
     }
     if (url == null) return null;

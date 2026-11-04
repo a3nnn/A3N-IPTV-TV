@@ -34,6 +34,15 @@ class DiskCache {
       final sup = await getApplicationSupportDirectory();
       _images = await Directory('${tmp.path}/a3n_images').create(recursive: true);
       _lists = await Directory('${sup.path}/a3n_lists').create(recursive: true);
+      // The lists now live in the database (catalog.db): the old big copies
+      // are no longer used.
+      unawaited(() async {
+        try {
+          await for (final e in _lists!.list()) {
+            if (e is File) await e.delete();
+          }
+        } catch (_) {}
+      }());
       // Remember which images are already saved (in the background).
       unawaited(() async {
         try {

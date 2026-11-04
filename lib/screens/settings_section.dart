@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../config.dart';
 import '../l10n.dart';
+import '../data/catalog_db.dart';
 import '../data/speed_test.dart';
 import '../data/storage.dart';
 import '../data/xtream_api.dart';
@@ -59,6 +60,9 @@ class _SettingsSectionState extends State<SettingsSection> {
     if (ok != true) return;
     await PlayerService.instance.stop();
     await Storage.clearCredentials();
+    // The saved lists belong to this account.
+    XtreamApi.clearMemory();
+    await CatalogDb.clearAll();
     Session.api = null;
     Session.account = null;
     if (!context.mounted) return;
@@ -339,7 +343,7 @@ class _SettingsSectionState extends State<SettingsSection> {
       1 => _playback(),
       2 => _subtitles(),
       3 => _account(),
-      4 => const [_SpeedPanel()],
+      4 => const [_ListsPanel(), Divider(height: 36), _SpeedPanel()],
       5 => _remote(),
       _ => _about(),
     };
@@ -728,4 +732,104 @@ class _SpeedPanelState extends State<_SpeedPanel> {
       ],
     );
   }
+}
+
+
+/// Settings > Internet: the lists saved on the TV, when they were last
+/// updated, and "Update now".
+class _ListsPanel extends StatefulWidget {
+  const _ListsPanel();
+
+  @override
+  State<_ListsPanel> createState() => _ListsPanelState();
+}
+
+class _ListsPanelState extends State<_ListsPanel> {
+  bool _running = false;
+  String? _result;
+
+  Future<void> _update() async {
+    final api = Session.api;
+    if (api == null || _running) return;
+    setState(() {
+      _running = true;
+      _result = null;
+    });
+    final errors = <String>[];
+    for (final sec in const ['live', 'vod', 'series']) {
+      final e = await api.updateSection(sec);
+      if (e != null) errors.add('${XtreamApi.sectionName(sec)}: $e');
+      if (!mounted) return;
+      setState(() {});
+    }
+    if (!mounted) return;
+    setState(() {
+      _running = false;
+      _result = errors.isEmpty ? tr('All lists are up to date.', 'كل القوائم محدّثة.') : errors.join('\n');
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final api = Session.api;
+    String when(String sec) {
+      final at = api?.savedAt(sec);
+      return at == null ? tr('Not loaded yet', 'ما تحمّلت بعد') : fmtShort(at);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _SubHeader2(),
+        _InfoRow(tr('Channels', 'القنوات'), when('live')),
+        _InfoRow(tr('Movies', 'الأفلام'), when('vod')),
+        _InfoRow(tr('Series', 'المسلسلات'), when('series')),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
+          child: Text(
+            tr('The lists are saved on the TV and updated by themselves once a day. Update now if new channels or titles are missing.',
+                'القوائم محفوظة في التلفزيون وتتحدث لحالها مرة في اليوم. حدّثها الحين إذا فيه قنوات أو أفلام جديدة ما طلعت.'),
+            style: const TextStyle(fontSize: 12, color: AppConfig.textSecondary),
+          ),
+        ),
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: Padding(
+            padding: const EdgeInsetsDirectional.only(start: 10),
+            child: FilledButton.icon(
+              onPressed: _running ? null : _update,
+              icon: _running
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.black))
+                  : const Icon(Icons.sync_rounded),
+              label: Text(_running ? tr('Updating...', 'جاري التحديث...') : tr('Update the lists now', 'تحديث القوائم الحين')),
+            ),
+          ),
+        ),
+        if (_running)
+          Padding(
+            padding: const EdgeInsetsDirectional.only(start: 10, top: 10),
+            child: ValueListenableBuilder<String?>(
+              valueListenable: XtreamApi.loadStatus,
+              builder: (context, s, _) => Text(s ?? '', style: const TextStyle(color: AppConfig.textSecondary)),
+            ),
+          ),
+        if (_result != null)
+          Padding(
+            padding: const EdgeInsetsDirectional.only(start: 10, top: 10),
+            child: Text(_result!, style: const TextStyle(fontWeight: FontWeight.w600)),
+          ),
+      ],
+    );
+  }
+}
+
+class _SubHeader2 extends StatelessWidget {
+  const _SubHeader2();
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsetsDirectional.only(start: 10, bottom: 6),
+        child: Text(tr('Saved lists (last update)', 'القوائم المحفوظة (آخر تحديث)'),
+            style: const TextStyle(fontWeight: FontWeight.w700)),
+      );
 }

@@ -16,10 +16,16 @@ dependencies:
   media_kit_libs_video: ^1.0.5
   video_player: ^2.10.0
   flutter_displaymode: '>=0.6.0 <1.0.0'
+  sqlite3: ^2.4.0
+  sqlite3_flutter_libs: ^0.5.24
   device_info_plus: '>=10.1.0 <14.0.0'
   path_provider: ^2.1.0
   open_filex: '>=4.5.0 <6.0.0'
   package_info_plus: '>=8.0.0 <10.0.0'
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
 
 flutter:
   uses-material-design: true

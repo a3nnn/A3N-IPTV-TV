@@ -37,6 +37,9 @@ String fmtTime(DateTime d) => '${two(d.hour)}:${two(d.minute)}';
 
 String fmtDate(DateTime d) => '${d.year}-${two(d.month)}-${two(d.day)}';
 
+/// 03/11 22:49 (the date a list was last updated).
+String fmtShort(DateTime d) => '${two(d.day)}/${two(d.month)} ${two(d.hour)}:${two(d.minute)}';
+
 /// For search: lower case, and the Arabic letter variants treated as one
 /// (أ إ آ → ا, ى → ي, ة → ه), without tashkeel.
 String searchNorm(String s) {

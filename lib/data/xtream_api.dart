@@ -7,7 +7,7 @@ import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:http/http.dart' as http;
 
 import '../config.dart';
-import 'disk_cache.dart';
+import 'catalog_db.dart';
 import 'models.dart';
 import '../l10n.dart';
 
@@ -53,158 +53,171 @@ class XtreamApi {
   /// isolate so the TV interface never freezes while loading.
   static dynamic _decode(Uint8List bytes) => jsonDecode(utf8.decode(bytes, allowMalformed: true));
 
-  static List<T> _parseList<T>(Uint8List bytes, T Function(Map<String, dynamic>) fromJson) {
-    final data = _decode(bytes);
-    if (data is! List) return <T>[];
-    return data
-        .whereType<Map>()
-        .map((e) => fromJson(e is Map<String, dynamic> ? e : Map<String, dynamic>.from(e)))
-        .toList();
-  }
+  // ------------------------------------------------------------ lists
+  // Saved on the TV in a database (CatalogDb), downloaded from the server
+  // once, then again only once a day (in the background, one list after the
+  // other) or when "Update the lists" is pressed in Settings.
 
-  // Same way of loading the lists as 1.3.8 (the version that worked well):
-  // the copy saved on the TV opens the section at once, a fresh copy is
-  // downloaded in the background, movies / series stay in memory.
+  /// Lists opened during this app start, kept in memory: going back to a
+  /// section is instant.
+  static final Map<String, (List<Category>, List<Object>)> _mem = {};
+  static final Map<String, Future<(List<Category>, List<Object>)>> _opening = {};
+  static final Map<String, Future<int>> _downloads = {};
 
-  /// Movie and series lists kept ready in memory after the first opening, so
-  /// going back to the section shows them at once. Replaced by the fresh copy
-  /// as soon as the background download finishes (new titles show without
-  /// reopening the app).
-  static final Map<String, List<Object?>> _mem = {};
-
-  /// Bumped when a fresh movie / series list is ready (open pages refresh).
+  /// Bumped when an open list was replaced by a fresh download (open pages
+  /// refresh quietly).
   static final ValueNotifier<int> listsChanged = ValueNotifier<int>(0);
-  static const Set<String> _keepInMemory = {
-    'get_vod_categories', 'get_vod_streams', 'get_series_categories', 'get_series',
-  };
 
-  /// What the list being opened is doing right now (shown under the
-  /// loading circle), null = nothing.
+  /// Bumped after a list was saved (the dates on the start screen).
+  static final ValueNotifier<int> listsSaved = ValueNotifier<int>(0);
+
+  /// What is happening right now, like "Loading your series list... 2/2
+  /// (12.4 MB)" (shown under the loading circle), null = nothing.
   static final ValueNotifier<String?> loadStatus = ValueNotifier<String?>(null);
+
+  /// Section being updated in the background ('live' / 'vod' / 'series').
+  static final ValueNotifier<String?> updating = ValueNotifier<String?>(null);
+
+  /// Kept for the sign-in screens.
+  static void markSignedIn() {}
+
+  /// Forget the lists in memory (sign out).
+  static void clearMemory() => _mem.clear();
+
+  static String sectionName(String sec) => switch (sec) {
+        'live' => tr('channels', 'القنوات'),
+        'vod' => tr('movies', 'الأفلام'),
+        _ => tr('series', 'المسلسلات'),
+      };
 
   static String _mb(int bytes) => (bytes / (1024 * 1024)).toStringAsFixed(1);
 
-  /// Kept for the sign-in screens (nothing waits for it any more).
-  static void markSignedIn() {}
+  String _key(String sec) => '$username|$sec';
 
-  Future<List<T>> _listOf<T>(String action, T Function(Map<String, dynamic>) fromJson) async {
-    final name = _listName(action);
-    final keep = _keepInMemory.contains(action);
-    if (keep) {
-      final m = _mem[name];
-      if (m != null) return m as List<T>;
-    }
+  /// When this section was last saved on the TV (null = never).
+  DateTime? savedAt(String sec) => CatalogDb.updatedAt(username, sec);
+
+  Future<(List<Category>, List<Object>)> _section(String sec) {
+    final k = _key(sec);
+    final m = _mem[k];
+    if (m != null) return Future.value(m);
+    return _opening[k] ??= _open(sec).whenComplete(() => _opening.remove(k));
+  }
+
+  Future<(List<Category>, List<Object>)> _open(String sec) async {
+    final name = sectionName(sec);
     try {
-      final bytes = await _cachedFetch(
-        action,
-        onFresh: !keep
-            ? null
-            : (fresh) async {
-                try {
-                  _mem[name] = await Isolate.run(() => _parseList<T>(fresh, fromJson));
-                  listsChanged.value++;
-                } catch (_) {}
-              },
-      );
-      try {
-        loadStatus.value = tr('Preparing the list...', 'جاري تجهيز القائمة...');
-        final list = await Isolate.run(() => _parseList<T>(bytes, fromJson));
-        if (!keep) return list;
-        // If the fresh copy got here first, keep it.
-        return (_mem[name] ??= list) as List<T>;
-      } catch (_) {
-        await DiskCache.deleteList(name);
+      loadStatus.value = tr('Opening the $name list...', 'جاري فتح قائمة $name...');
+      var data = await CatalogDb.read(username, sec);
+      if (data == null) {
+        // First time: download it now (with the progress shown).
+        await _download(sec);
+        loadStatus.value = tr('Opening the $name list...', 'جاري فتح قائمة $name...');
+        data = await CatalogDb.read(username, sec);
+      }
+      if (data == null) {
         throw XtreamException(tr('Unexpected response from the server.', 'رد غير متوقع من السيرفر.'));
       }
+      _mem[_key(sec)] = data;
+      return data;
     } finally {
       loadStatus.value = null;
     }
   }
 
-  String _listName(String action) => '$host|$username|$action';
-
-  /// Lists already updated in the background during this app start.
-  static final Set<String> _refreshed = {};
-
-  /// Uses the copy saved on the TV so the screen opens at once, and quietly
-  /// downloads a fresh copy for next time. A copy older than a day is only
-  /// used if the server can't be reached.
-  Future<Uint8List> _cachedFetch(String action, {Future<void> Function(Uint8List fresh)? onFresh}) async {
-    final name = _listName(action);
-    loadStatus.value = tr('Reading the saved list...', 'جاري قراءة القائمة المحفوظة...');
-    final saved = await DiskCache.readList(name);
-    // Small copies saved by 1.3.9 / 1.4.0: no longer used.
-    unawaited(DiskCache.deleteList('$name|s1'));
-    if (saved != null && saved.$2 < const Duration(hours: 24)) {
-      if (_refreshed.add(name)) {
-        unawaited(() async {
-          try {
-            final b = await _fetchList(action);
-            await DiskCache.writeList(name, b);
-            if (onFresh != null) await onFresh(b);
-          } catch (_) {}
-        }());
+  /// Downloads [sec] into the database (one download per section at a time;
+  /// asking again joins the running one).
+  Future<int> _download(String sec) {
+    final k = _key(sec);
+    return _downloads[k] ??= () async {
+      final name = sectionName(sec);
+      try {
+        return await CatalogDb.download(
+          host: host,
+          username: username,
+          password: password,
+          userAgent: AppConfig.userAgent,
+          sec: sec,
+          onProgress: (step, bytes, total) {
+            if (step >= 3) {
+              loadStatus.value = tr('Saving the $name list...', 'جاري حفظ قائمة $name...');
+              return;
+            }
+            final size = bytes <= 0
+                ? ''
+                : total > 0
+                    ? ' (${_mb(bytes)} / ${_mb(total)} ${tr('MB', 'ميقا')})'
+                    : ' (${_mb(bytes)} ${tr('MB', 'ميقا')})';
+            loadStatus.value = tr('Loading your $name list... $step/2$size', 'جاري تحميل قائمة $name... $step/2$size');
+          },
+        );
+      } catch (e) {
+        throw XtreamException(_downloadError('$e'));
+      } finally {
+        _downloads.remove(k);
+        loadStatus.value = null;
+        listsSaved.value++;
       }
-      return saved.$1;
+    }();
+  }
+
+  static String _downloadError(String code) {
+    if (code == 'NET') {
+      return tr('Could not reach the server. Check your internet connection.', 'ما قدرنا نوصل للسيرفر. تأكد من الإنترنت.');
     }
+    if (code == 'STALL') {
+      return tr('The server stopped sending the list. Check your internet connection.', 'السيرفر وقف وهو يرسل القائمة. تأكد من الإنترنت.');
+    }
+    if (code == 'EMPTY') {
+      return tr('The server sent an empty list, the saved list was kept.', 'السيرفر رجّع قائمة فاضية، وخلّينا القائمة المحفوظة.');
+    }
+    if (code == 'HTTP 401' || code == 'HTTP 403') {
+      return tr('Access denied by the server.', 'السيرفر رفض الدخول.');
+    }
+    if (code.startsWith('HTTP')) return tr('Server error ($code).', 'خطأ في السيرفر ($code).');
+    return tr('Unexpected response from the server.', 'رد غير متوقع من السيرفر.');
+  }
+
+  /// Downloads [sec] again now (Settings > Update the lists, or the daily
+  /// update). An open list is replaced quietly. Returns an error text, or
+  /// null when it worked.
+  Future<String?> updateSection(String sec) async {
+    updating.value = sec;
     try {
-      loadStatus.value = tr('Downloading the list from the server...', 'جاري تنزيل القائمة من السيرفر...');
-      final fresh = await _fetchList(
-        action,
-        onProgress: (n) => loadStatus.value =
-            tr('Downloading the list from the server... ${_mb(n)} MB', 'جاري تنزيل القائمة من السيرفر... ${_mb(n)} ميقا'),
-      );
-      _refreshed.add(name);
-      unawaited(DiskCache.writeList(name, fresh));
-      return fresh;
-    } catch (e) {
-      if (saved != null) return saved.$1;
-      rethrow;
+      await _download(sec);
+      final k = _key(sec);
+      if (_mem.containsKey(k)) {
+        final d = await CatalogDb.read(username, sec);
+        if (d != null) {
+          _mem[k] = d;
+          listsChanged.value++;
+        }
+      }
+      return null;
+    } on XtreamException catch (e) {
+      return e.message;
+    } catch (_) {
+      return tr('Unexpected response from the server.', 'رد غير متوقع من السيرفر.');
+    } finally {
+      updating.value = null;
     }
   }
 
-  /// Downloads a (big) list. Gives up only when nothing arrives for 30 s
-  /// (a slow server still gets there), reporting the size so far.
-  Future<Uint8List> _fetchList(String action, {void Function(int bytes)? onProgress}) async {
-    final uri = Uri.parse('$host/player_api.php').replace(queryParameters: {
-      'username': username,
-      'password': password,
-      'action': action,
-    });
-    final client = http.Client();
-    try {
-      final req = http.Request('GET', uri)..headers['User-Agent'] = AppConfig.userAgent;
-      final http.StreamedResponse res;
-      try {
-        res = await client.send(req).timeout(const Duration(seconds: 30));
-      } catch (_) {
-        throw XtreamException(tr('Could not reach the server. Check your internet connection.', 'ما قدرنا نوصل للسيرفر. تأكد من الإنترنت.'));
+  static bool _dailyStarted = false;
+
+  /// Once per app start, a little after the home screen opens: lists saved
+  /// more than a day ago are downloaded again, one after the other, in the
+  /// background. Lists never opened are left alone (downloaded when opened).
+  void updateOldLists() {
+    if (_dailyStarted) return;
+    _dailyStarted = true;
+    unawaited(() async {
+      for (final sec in const ['live', 'vod', 'series']) {
+        final at = savedAt(sec);
+        if (at == null || DateTime.now().difference(at) < const Duration(hours: 24)) continue;
+        await updateSection(sec);
       }
-      if (res.statusCode == 401 || res.statusCode == 403) {
-        throw XtreamException(tr('Access denied by the server (${res.statusCode}).', 'السيرفر رفض الدخول (${res.statusCode}).'));
-      }
-      if (res.statusCode != 200) {
-        throw XtreamException(tr('Server error (${res.statusCode}).', 'خطأ في السيرفر (${res.statusCode}).'));
-      }
-      final out = BytesBuilder(copy: false);
-      var last = DateTime(2000);
-      try {
-        await for (final chunk in res.stream.timeout(const Duration(seconds: 30))) {
-          out.add(chunk);
-          final now = DateTime.now();
-          if (onProgress != null && now.difference(last) > const Duration(milliseconds: 300)) {
-            last = now;
-            onProgress(out.length);
-          }
-        }
-      } catch (_) {
-        throw XtreamException(tr('The server stopped sending the list. Check your internet connection.', 'السيرفر وقف وهو يرسل القائمة. تأكد من الإنترنت.'));
-      }
-      onProgress?.call(out.length);
-      return out.takeBytes();
-    } finally {
-      client.close();
-    }
+    }());
   }
 
   Future<dynamic> _get(Map<String, String> extra) async {
@@ -300,23 +313,12 @@ class XtreamApi {
     return info;
   }
 
-  Future<List<Category>> liveCategories() async =>
-      _listOf('get_live_categories', Category.fromJson);
-
-  Future<List<LiveChannel>> liveStreams() async =>
-      _listOf('get_live_streams', LiveChannel.fromJson);
-
-  Future<List<Category>> vodCategories() async =>
-      _listOf('get_vod_categories', Category.fromJson);
-
-  Future<List<Movie>> vodStreams() async =>
-      _listOf('get_vod_streams', Movie.fromJson);
-
-  Future<List<Category>> seriesCategories() async =>
-      _listOf('get_series_categories', Category.fromJson);
-
-  Future<List<Series>> series() async =>
-      _listOf('get_series', Series.fromJson);
+  Future<List<Category>> liveCategories() async => (await _section('live')).$1;
+  Future<List<LiveChannel>> liveStreams() async => (await _section('live')).$2 as List<LiveChannel>;
+  Future<List<Category>> vodCategories() async => (await _section('vod')).$1;
+  Future<List<Movie>> vodStreams() async => (await _section('vod')).$2 as List<Movie>;
+  Future<List<Category>> seriesCategories() async => (await _section('series')).$1;
+  Future<List<Series>> series() async => (await _section('series')).$2 as List<Series>;
 
   Future<SeriesInfo> seriesInfo(int seriesId) async =>
       SeriesInfo.fromJson(await _get({'action': 'get_series_info', 'series_id': '$seriesId'}));

@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:sqlite3_flutter_libs/sqlite3_flutter_libs.dart';
 
 import 'config.dart';
 import 'l10n.dart';
+import 'data/catalog_db.dart';
 import 'data/disk_cache.dart';
 import 'data/storage.dart';
 import 'data/watch_history.dart';
@@ -26,8 +29,15 @@ Future<void> main() async {
   L.init();
   TextSize.init();
   WatchHistory.init();
-  // Saved posters / lists on the TV (doesn't hold up the start).
+  // Saved posters on the TV (doesn't hold up the start).
   DiskCache.init();
+  // The channel / movie / series lists saved on the TV (database).
+  try {
+    await applyWorkaroundToOpenSqlite3OnOldAndroidVersions();
+  } catch (_) {}
+  try {
+    CatalogDb.init((await getApplicationSupportDirectory()).path);
+  } catch (_) {}
 
   // Keep decoded logos/posters small in memory (TVs have little RAM).
   PaintingBinding.instance.imageCache

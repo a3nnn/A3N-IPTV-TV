@@ -1,0 +1,24 @@
+name: Test lists database
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: SQLite for the tests
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libsqlite3-dev
+      - name: Placeholder fonts (not needed by the tests)
+        run: for f in assets/fonts/*.otf.enc; do cp "$f" "${f%.enc}"; done
+      - name: Analyze
+        run: |
+          flutter pub get
+          flutter analyze --no-fatal-infos --no-fatal-warnings lib test || true
+      - name: Test
+        run: flutter test test/catalog_db_test.dart -r expanded

@@ -95,6 +95,8 @@ class _HomeScreenState extends State<HomeScreen> {
     _licenseTimer = Timer.periodic(const Duration(minutes: 2), (_) => _checkLicense());
     // Look for a newer version a few seconds after opening (optional update).
     Future.delayed(const Duration(seconds: 3), _checkUpdate);
+    // Lists saved more than a day ago: updated quietly, one after the other.
+    Future.delayed(const Duration(seconds: 8), () => Session.api?.updateOldLists());
   }
 
   Future<void> _checkUpdate() async {

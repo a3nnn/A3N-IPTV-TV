@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../config.dart';
 import '../data/watch_history.dart';
+import '../data/xtream_api.dart';
 import '../l10n.dart';
 import '../utils.dart';
 import '../widgets/common.dart';
@@ -57,14 +58,28 @@ class _StartMenuState extends State<StartMenu> {
     showToast(context, tr('Removed from Continue watching', 'تمت الإزالة من تابع المشاهدة'));
   }
 
+  /// "Updated 03/11 22:49" under a section, like Hot Player's "Local access".
+  static String? _saved(String sec) {
+    final api = Session.api;
+    if (api == null) return null;
+    if (XtreamApi.updating.value == sec) return tr('Updating...', 'جاري التحديث...');
+    final at = api.savedAt(sec);
+    return at == null ? null : tr('Updated ${fmtShort(at)}', 'آخر تحديث ${fmtShort(at)}');
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ListenableBuilder(
+        listenable: Listenable.merge([XtreamApi.listsSaved, XtreamApi.updating]),
+        builder: (context, _) => _build(context),
+      );
+
+  Widget _build(BuildContext context) {
     // Live TV on its own wide row; under it Series, Movies, Settings
     // (right → left in Arabic, left → right in English).
     final small = [
-      (2, Icons.video_library_rounded, tr('Series', 'المسلسلات')),
-      (1, Icons.movie_rounded, tr('Movies', 'الأفلام')),
-      (3, Icons.settings_rounded, tr('Settings', 'الإعدادات')),
+      (2, Icons.video_library_rounded, tr('Series', 'المسلسلات'), _saved('series')),
+      (1, Icons.movie_rounded, tr('Movies', 'الأفلام'), _saved('vod')),
+      (3, Icons.settings_rounded, tr('Settings', 'الإعدادات'), null),
     ];
     return ListView(
       padding: const EdgeInsets.fromLTRB(40, 16, 40, 12),
@@ -72,6 +87,7 @@ class _StartMenuState extends State<StartMenu> {
         _MenuTile(
           icon: Icons.live_tv_rounded,
           label: tr('Live TV', 'البث المباشر'),
+          sub: _saved('live'),
           height: 104,
           big: true,
           autofocus: true, // the remote always starts on Live TV
@@ -86,6 +102,7 @@ class _StartMenuState extends State<StartMenu> {
                 child: _MenuTile(
                   icon: small[i].$2,
                   label: small[i].$3,
+                  sub: small[i].$4,
                   height: 76,
                   onTap: () => widget.onSelect(small[i].$1),
                 ),
@@ -125,9 +142,11 @@ class _MenuTile extends StatefulWidget {
   final VoidCallback onTap;
   final double height;
   final bool big;
+  final String? sub;
   const _MenuTile({
     required this.icon,
     required this.label,
+    this.sub,
     required this.onTap,
     this.autofocus = false,
     this.height = 160,
@@ -169,6 +188,11 @@ class _MenuTileState extends State<_MenuTile> {
                 SizedBox(height: widget.big ? 8 : 4),
                 Text(widget.label,
                     style: TextStyle(fontSize: widget.big ? 22 : 17, fontWeight: FontWeight.w700)),
+                if (widget.sub != null)
+                  Text(widget.sub!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 11, color: AppConfig.textSecondary)),
               ],
             ),
           ),
