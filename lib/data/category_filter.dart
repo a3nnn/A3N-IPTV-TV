@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config.dart';
 import 'models.dart';
+import 'storage.dart';
 
 /// Categories hidden for every user with "A3N Category Manager"
 /// (Supabase table `hidden_categories`).
@@ -16,7 +17,9 @@ import 'models.dart';
 /// Safe to remove: if the table is deleted or empty, every category is
 /// shown. If Supabase can't be reached, the last list received is used.
 class CategoryFilter {
-  static const _prefsKey = 'hidden_categories_v2';
+  // Saved per username (each user may have his own template).
+  static String get _prefsKey => 'hidden_categories_v3|${Storage.username ?? ''}';
+  static String? _forUser;
   static const _cacheFor = Duration(minutes: 2);
 
   /// section -> {'ids': {...}, 'names': {...}}
@@ -41,6 +44,12 @@ class CategoryFilter {
   /// is used at once and a fresh one is asked for in the background (a change
   /// made in Category Manager shows the next time the section is opened).
   static Future<void> _ensure() async {
+    // Another account signed in: forget the previous user's list.
+    if (_forUser != Storage.username) {
+      _forUser = Storage.username;
+      _hidden = null;
+      _fetchedAt = null;
+    }
     final at = _fetchedAt;
     if (_hidden != null && at != null && DateTime.now().difference(at) < _cacheFor) return;
     if (_hidden == null) {
@@ -84,11 +93,48 @@ class CategoryFilter {
   }
 
   /// null = couldn't ask Supabase (keep the last list).
+  ///
+  /// The template given to this username in Category Manager
+  /// (hidden_for_user); no template = nothing hidden. Before the templates
+  /// were set up in Supabase: the old list for everyone (hidden_categories).
   static Future<Map<String, HiddenCategories>?> _fetch() async {
     if (AppConfig.supabaseUrl.isEmpty || AppConfig.supabaseKey.isEmpty) return {};
     final base = AppConfig.supabaseUrl.endsWith('/')
         ? AppConfig.supabaseUrl.substring(0, AppConfig.supabaseUrl.length - 1)
         : AppConfig.supabaseUrl;
+    try {
+      final res = await http
+          .post(
+            Uri.parse('$base/rest/v1/rpc/hidden_for_user'),
+            headers: {'apikey': AppConfig.supabaseKey, 'Content-Type': 'application/json'},
+            body: jsonEncode({'p_username': Storage.username ?? ''}),
+          )
+          .timeout(const Duration(seconds: 6));
+      if (res.statusCode == 200) {
+        final j = jsonDecode(utf8.decode(res.bodyBytes));
+        final out = <String, HiddenCategories>{};
+        if (j is Map) {
+          for (final e in j.entries) {
+            final list = e.value;
+            if (list is! List) continue;
+            final ids = <String>{};
+            final names = <String>{};
+            for (final r in list.whereType<Map>()) {
+              final id = '${r['id'] ?? ''}';
+              if (id.isNotEmpty) ids.add(id);
+              final n = HiddenCategories.norm('${r['name'] ?? ''}');
+              if (n.isNotEmpty) names.add(n);
+            }
+            out['${e.key}'] = HiddenCategories(ids, names);
+          }
+        }
+        return out;
+      }
+      if (res.statusCode != 404) return null;
+      // 404 = templates not set up yet: the old list below.
+    } catch (_) {
+      return null;
+    }
     final ids = <String, Set<String>>{};
     final names = <String, Set<String>>{};
     const page = 1000;
