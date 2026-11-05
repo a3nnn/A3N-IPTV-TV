@@ -340,6 +340,7 @@ class CatalogDb {
         db.execute('INSERT OR REPLACE INTO meta(k, v) VALUES (?, ?)',
             ['upd|$acc|${a.sec}', '${DateTime.now().millisecondsSinceEpoch}']);
         db.execute('INSERT OR REPLACE INTO meta(k, v) VALUES (?, ?)', ['size|$acc|${a.sec}', '$received']);
+        db.execute('INSERT OR REPLACE INTO meta(k, v) VALUES (?, ?)', ['nn|$acc|${a.sec}', '1']);
         db.execute('COMMIT');
       } catch (_) {
         db.execute('ROLLBACK');
@@ -488,14 +489,15 @@ extension CatalogQueries on CatalogDb {
     final db = CatalogDb._open(path);
     try {
       // Lists saved by 1.5.0 have no search text yet: fill it once.
-      final missing = db.select('SELECT COUNT(*) FROM items WHERE acc = ? AND sec = ? AND nname IS NULL', [acc, sec]);
-      if (((missing.first.columnAt(0) as int?) ?? 0) > 0) {
+      final filled = db.select('SELECT 1 FROM meta WHERE k = ?', ['nn|$acc|$sec']).isNotEmpty;
+      if (!filled) {
         final rows = db.select('SELECT rowid, name FROM items WHERE acc = ? AND sec = ? AND nname IS NULL', [acc, sec]);
         final up = db.prepare('UPDATE items SET nname = ? WHERE rowid = ?');
         db.execute('BEGIN');
         for (final r in rows) {
           up.execute([searchNorm('${r.columnAt(1) ?? ''}'), r.columnAt(0)]);
         }
+        db.execute('INSERT OR REPLACE INTO meta(k, v) VALUES (?, ?)', ['nn|$acc|$sec', '1']);
         db.execute('COMMIT');
         up.dispose();
       }
