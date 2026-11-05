@@ -20,6 +20,33 @@ class StartMenu extends StatefulWidget {
 }
 
 class _StartMenuState extends State<StartMenu> {
+  /// The tile used last (0 Live, 1 Movies, 2 Series, 3 Settings): coming back
+  /// from a section, the remote is put back on it.
+  static int _lastTile = 0;
+  final List<FocusNode> _tiles = List.generate(4, (_) => FocusNode());
+
+  @override
+  void initState() {
+    super.initState();
+    // Coming back from a section the focus was lost: put it on that tile.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _tiles[_lastTile].requestFocus();
+    });
+  }
+
+  @override
+  void dispose() {
+    for (final n in _tiles) {
+      n.dispose();
+    }
+    super.dispose();
+  }
+
+  void _openSection(int i) {
+    _lastTile = i;
+    widget.onSelect(i);
+  }
+
   List<WatchEntry> _continue = WatchHistory.continueList();
 
   Future<void> _resume(WatchEntry e) async {
@@ -90,8 +117,8 @@ class _StartMenuState extends State<StartMenu> {
           sub: _saved('live'),
           height: 104,
           big: true,
-          autofocus: true, // the remote always starts on Live TV
-          onTap: () => widget.onSelect(0),
+          focusNode: _tiles[0],
+          onTap: () => _openSection(0),
         ),
         const SizedBox(height: 12),
         Row(
@@ -104,7 +131,8 @@ class _StartMenuState extends State<StartMenu> {
                   label: small[i].$3,
                   sub: small[i].$4,
                   height: 76,
-                  onTap: () => widget.onSelect(small[i].$1),
+                  focusNode: _tiles[small[i].$1],
+                  onTap: () => _openSection(small[i].$1),
                 ),
               ),
             ],
@@ -143,7 +171,9 @@ class _MenuTile extends StatefulWidget {
   final double height;
   final bool big;
   final String? sub;
+  final FocusNode? focusNode;
   const _MenuTile({
+    this.focusNode,
     required this.icon,
     required this.label,
     this.sub,
@@ -172,6 +202,7 @@ class _MenuTileState extends State<_MenuTile> {
         child: InkWell(
           borderRadius: BorderRadius.circular(18),
           autofocus: widget.autofocus,
+          focusNode: widget.focusNode,
           focusColor: Colors.transparent,
           onFocusChange: (f) => setState(() => _focused = f),
           onTap: widget.onTap,

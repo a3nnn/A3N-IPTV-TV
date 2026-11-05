@@ -575,20 +575,7 @@ class _LiveSectionState extends State<LiveSection> {
           _video(),
           _bufferingIndicator(),
           const Positioned(top: 10, left: 10, child: StreamInfoBadge(compact: true)),
-          Positioned(
-            right: 12,
-            bottom: 12,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                RoundIconButton(
-                  icon: Icons.fullscreen_rounded,
-                  tooltip: tr('Full screen', 'ملء الشاشة'),
-                  onTap: () => _setFullscreen(true),
-                ),
-              ],
-            ),
-          ),
+          // (No full-screen button: OK on the playing channel opens full screen.)
         ],
       ),
     );
