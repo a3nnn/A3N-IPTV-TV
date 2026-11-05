@@ -166,7 +166,6 @@ class _StartMenuState extends State<StartMenu> {
 class _MenuTile extends StatefulWidget {
   final IconData icon;
   final String label;
-  final bool autofocus;
   final VoidCallback onTap;
   final double height;
   final bool big;
@@ -178,7 +177,6 @@ class _MenuTile extends StatefulWidget {
     required this.label,
     this.sub,
     required this.onTap,
-    this.autofocus = false,
     this.height = 160,
     this.big = false,
   });
@@ -201,7 +199,6 @@ class _MenuTileState extends State<_MenuTile> {
         borderRadius: BorderRadius.circular(18),
         child: InkWell(
           borderRadius: BorderRadius.circular(18),
-          autofocus: widget.autofocus,
           focusNode: widget.focusNode,
           focusColor: Colors.transparent,
           onFocusChange: (f) => setState(() => _focused = f),

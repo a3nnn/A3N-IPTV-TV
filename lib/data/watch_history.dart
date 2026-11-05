@@ -51,11 +51,14 @@ class WatchEntry {
 
   double get fraction => duration > 0 ? (position / duration).clamp(0.0, 1.0) : 0.0;
 
-  /// Worth offering "continue": started (over a minute in) and not finished.
-  bool get resumable => !done && position >= 60;
+  /// Worth offering "continue": started (a few seconds in) and not finished.
+  /// Seconds watched before it shows in "Continue watching".
+  static const int minSeconds = 3;
+
+  bool get resumable => !done && position >= minSeconds;
 
   /// Shown in "Continue watching".
-  bool get inContinue => !done && (position >= 60 || upNext);
+  bool get inContinue => !done && (position >= minSeconds || upNext);
 
   Map<String, dynamic> toJson() => {
         'k': key,
@@ -173,7 +176,7 @@ class WatchHistory {
     final left = e.duration - position;
     e.done = e.duration > 0 && (position / e.duration >= 0.95 || (e.duration > 1200 && left < 120));
     if (e.done) e.position = 0;
-    if (e.done || position >= 60) e.upNext = false;
+    if (e.done || position >= WatchEntry.minSeconds) e.upNext = false;
     e.updated = DateTime.now().millisecondsSinceEpoch;
     _map[e.key] = e;
     _scheduleSave();
