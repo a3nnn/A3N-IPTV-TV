@@ -53,23 +53,16 @@ class PlayerService {
     ),
   );
 
-  /// "Fast"  = mediacodec (direct to the screen, lightest).
-  /// "Compatible" = mediacodec-copy + GPU, for the rare TV where Fast shows a black picture.
+  /// Decoded and drawn by the TV's video chip (lightest). The old
+  /// "Compatible video mode" was removed in 1.5.4 (a TV showing a black
+  /// picture uses the weak-device player instead).
   late final VideoController controller = VideoController(
     player,
-    configuration: Storage.compatibleDecoder
-        ? VideoControllerConfiguration(
-            vo: 'gpu',
-            hwdec: 'mediacodec-copy',
-            enableHardwareAcceleration: true,
-            width: 1280,
-            height: 720,
-          )
-        : VideoControllerConfiguration(
-            vo: 'mediacodec_embed',
-            hwdec: 'mediacodec',
-            enableHardwareAcceleration: true,
-          ),
+    configuration: const VideoControllerConfiguration(
+      vo: 'mediacodec_embed',
+      hwdec: 'mediacodec',
+      enableHardwareAcceleration: true,
+    ),
   );
 
   Future<void> _tune() async {

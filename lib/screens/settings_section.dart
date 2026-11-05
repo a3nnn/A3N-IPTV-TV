@@ -27,7 +27,6 @@ class SettingsSection extends StatefulWidget {
 class _SettingsSectionState extends State<SettingsSection> {
   bool _lite = Storage.liteMode;
   String _engine = Storage.playerEngine;
-  bool _compatible = Storage.compatibleDecoder;
   bool _afr = Storage.matchFrameRate;
   String _subLang = Storage.subtitleLang;
   String _textSize = TextSize.value.value;
@@ -350,18 +349,6 @@ class _SettingsSectionState extends State<SettingsSection> {
           _restartHint();
         },
       ),
-      if (_engine != 'exo')
-        _SwitchRow(
-          title: tr('Compatible video mode', 'وضع الفيديو المتوافق'),
-          subtitle: tr('Only if channels show a black picture or no video. Reopen the app after changing.',
-              'استخدمه بس إذا الصورة سوداء أو ما يطلع فيديو. اقفل التطبيق وافتحه بعد التغيير.'),
-          value: _compatible,
-          onChanged: (v) {
-            setState(() => _compatible = v);
-            Storage.setCompatibleDecoder(v);
-            _restartHint();
-          },
-        ),
     ];
   }
 
