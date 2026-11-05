@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../config.dart';
+import '../data/catalog_db.dart';
 import '../data/category_filter.dart';
 import '../data/models.dart';
 import '../data/storage.dart';
@@ -50,31 +53,26 @@ class CatalogData {
 class MoviesSection extends StatelessWidget {
   const MoviesSection({super.key});
 
-  Future<CatalogData> _load() async {
-    final api = Session.api!;
-    final results = await Future.wait<Object>([api.vodCategories(), api.vodStreams()]);
-    final allCats = results[0] as List<Category>;
-    final hidden = await CategoryFilter.hiddenIds('movies', allCats);
-    final cats = allCats.where((c) => !hidden.contains(c.id)).toList();
-    final movies = (results[1] as List<Movie>).where((m) => !hidden.contains(m.categoryId)).toList();
-    return CatalogData(
-      cats,
-      movies
-          .map((m) => CatalogItem(
-                id: m.id,
-                title: m.name,
-                image: m.poster,
-                categoryId: m.categoryId,
-                rating: m.rating,
-                onOpen: (ctx) => playMovie(ctx, m),
-              ))
-          .toList(),
+  static CatalogItem _item(Object o) {
+    final m = o as Movie;
+    return CatalogItem(
+      id: m.id,
+      title: m.name,
+      image: m.poster,
+      categoryId: m.categoryId,
+      rating: m.rating,
+      onOpen: (ctx) => playMovie(ctx, m),
     );
   }
 
   @override
-  Widget build(BuildContext context) =>
-      CatalogSection(section: 'movies', favKey: 'fav_movies', load: _load, allLabel: tr('All Movies', 'كل الأفلام'), searchHint: tr('Search movies', 'ابحث في الأفلام'));
+  Widget build(BuildContext context) => CatalogSection(
+      section: 'movies',
+      sec: 'vod',
+      favKey: 'fav_movies',
+      toItem: _item,
+      allLabel: tr('All Movies', 'كل الأفلام'),
+      searchHint: tr('Search movies', 'ابحث في الأفلام'));
 }
 
 // ------------------------------------------------------------ Series
@@ -82,46 +80,49 @@ class MoviesSection extends StatelessWidget {
 class SeriesSection extends StatelessWidget {
   const SeriesSection({super.key});
 
-  Future<CatalogData> _load() async {
-    final api = Session.api!;
-    final results = await Future.wait<Object>([api.seriesCategories(), api.series()]);
-    final allCats = results[0] as List<Category>;
-    final hidden = await CategoryFilter.hiddenIds('series', allCats);
-    final cats = allCats.where((c) => !hidden.contains(c.id)).toList();
-    final list = (results[1] as List<Series>).where((s) => !hidden.contains(s.categoryId)).toList();
-    return CatalogData(
-      cats,
-      list
-          .map((s) => CatalogItem(
-                id: s.id,
-                title: s.name,
-                image: s.cover,
-                categoryId: s.categoryId,
-                rating: s.rating,
-                isSeries: true,
-                onOpen: (ctx) => Navigator.of(ctx).push(
-                  MaterialPageRoute(builder: (_) => SeriesDetailScreen(series: s)),
-                ),
-              ))
-          .toList(),
+  static CatalogItem _item(Object o) {
+    final s = o as Series;
+    return CatalogItem(
+      id: s.id,
+      title: s.name,
+      image: s.cover,
+      categoryId: s.categoryId,
+      rating: s.rating,
+      isSeries: true,
+      onOpen: (ctx) => Navigator.of(ctx).push(
+        MaterialPageRoute(builder: (_) => SeriesDetailScreen(series: s)),
+      ),
     );
   }
 
   @override
-  Widget build(BuildContext context) =>
-      CatalogSection(section: 'series', favKey: 'fav_series', load: _load, allLabel: tr('All Series', 'كل المسلسلات'), searchHint: tr('Search series', 'ابحث في المسلسلات'));
+  Widget build(BuildContext context) => CatalogSection(
+      section: 'series',
+      sec: 'series',
+      favKey: 'fav_series',
+      toItem: _item,
+      allLabel: tr('All Series', 'كل المسلسلات'),
+      searchHint: tr('Search series', 'ابحث في المسلسلات'));
 }
 
 // ------------------------------------------------------------ shared grid
 
 class CatalogSection extends StatefulWidget {
-  final Future<CatalogData> Function() load;
   final String allLabel;
   final String searchHint;
-  final String section;
+  final String section; // 'movies' / 'series' (saved places, hidden categories)
+  final String sec; // 'vod' / 'series' (database)
   final String favKey;
+  final CatalogItem Function(Object model) toItem;
 
-  const CatalogSection({super.key, required this.section, required this.favKey, required this.load, required this.allLabel, required this.searchHint});
+  const CatalogSection(
+      {super.key,
+      required this.section,
+      required this.sec,
+      required this.favKey,
+      required this.toItem,
+      required this.allLabel,
+      required this.searchHint});
 
   /// Set by the home screen when a page kept in the background is shown
   /// again ('movies' / 'series'): the remote goes back where it was.
@@ -141,11 +142,22 @@ class _CatalogSectionState extends State<CatalogSection> {
 
   bool _loading = true;
   String? _error;
-  CatalogData _data = const CatalogData([], []);
+
+  // Only what is on screen is read from the database (one page at a time),
+  // so a section with 100 000 titles opens at once.
+  List<Category> _categories = [];
   Map<String, int> _counts = {};
+  int _total = 0;
+  List<String> _hidden = [];
   String _categoryId = _allId;
   String _query = '';
   List<CatalogItem> _visible = [];
+  bool _hasMore = false;
+  bool _loadingMore = false;
+  bool _querying = false;
+  int _token = 0;
+  Timer? _searchDebounce;
+  static const int _page = 300;
 
   @override
   void initState() {
@@ -182,21 +194,12 @@ class _CatalogSectionState extends State<CatalogSection> {
   Future<void> _reloadQuietly() async {
     if (_loading || _error != null) return;
     try {
-      final data = await widget.load();
-      final counts = <String, int>{};
-      for (final it in data.items) {
-        counts[it.categoryId] = (counts[it.categoryId] ?? 0) + 1;
-      }
+      await _readSummary();
       if (!mounted) return;
-      setState(() {
-        _data = data;
-        _counts = counts;
-        _refreshFavs();
-        if (_categoryId != _allId && _categoryId != _favId && !data.categories.any((c) => c.id == _categoryId)) {
-          _categoryId = _allId;
-        }
-        _applyFilter();
-      });
+      if (_categoryId != _allId && _categoryId != _favId && !_categories.any((c) => c.id == _categoryId)) {
+        _categoryId = _allId;
+      }
+      await _runQuery(keep: true);
     } catch (_) {}
   }
 
@@ -206,11 +209,24 @@ class _CatalogSectionState extends State<CatalogSection> {
     CatalogSection.reshown.removeListener(_onReshown);
     FocusManager.instance.removeListener(_trackFocus);
     _root.dispose();
+    _searchDebounce?.cancel();
     _searchCtrl.dispose();
     _gridScroll.dispose();
     _targetNode.dispose();
     _searchNode.dispose();
     super.dispose();
+  }
+
+  String get _acc => Session.api?.account ?? '';
+
+  Future<void> _readSummary() async {
+    final sum = await CatalogReads.summary(_acc, widget.sec);
+    final hidden = await CategoryFilter.hiddenIds(widget.section, sum.categories);
+    _hidden = hidden.toList();
+    _categories = sum.categories.where((c) => !hidden.contains(c.id)).toList();
+    _counts = {for (final e in sum.counts.entries) if (!hidden.contains(e.key)) e.key: e.value};
+    _total = _counts.values.fold(0, (a, b) => a + b);
+    await _refreshFavCount();
   }
 
   Future<void> _load() async {
@@ -219,19 +235,24 @@ class _CatalogSectionState extends State<CatalogSection> {
       _error = null;
     });
     try {
-      final data = await loadWithLimit(widget.load());
-      final counts = <String, int>{};
-      for (final it in data.items) {
-        counts[it.categoryId] = (counts[it.categoryId] ?? 0) + 1;
-      }
+      await loadWithLimit(() async {
+        final api = Session.api!;
+        await api.ensureSaved(widget.sec); // first time: download (with %)
+        XtreamApi.loadStatus.value = tr('Opening the list...', 'جاري فتح القائمة...');
+        try {
+          await _readSummary();
+        } finally {
+          XtreamApi.loadStatus.value = null;
+        }
+      }());
       if (!mounted) return;
-      setState(() {
-        _data = data;
-        _counts = counts;
-        _refreshFavs();
-        _loading = false;
-        _restoreLastPlace();
-      });
+      final cat = Storage.lastCatalogCategory(widget.section);
+      if (cat != null && (cat == _allId || cat == _favId || _categories.any((c) => c.id == cat))) {
+        _categoryId = cat;
+      }
+      await _runQuery(focusId: Storage.lastCatalogItem(widget.section));
+      if (!mounted) return;
+      setState(() => _loading = false);
       if (_focusItemId != null) WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToTarget());
     } catch (e) {
       if (!mounted) return;
@@ -242,15 +263,78 @@ class _CatalogSectionState extends State<CatalogSection> {
     }
   }
 
+  CatalogQuery _queryFor({int offset = 0, int limit = _page}) => CatalogQuery(
+        CatalogReads.path ?? '',
+        _acc,
+        widget.sec,
+        cat: (_categoryId == _allId || _categoryId == _favId) ? null : _categoryId,
+        ids: _categoryId == _favId ? _favs.toList() : null,
+        search: searchNorm(_query.trim()),
+        hidden: _hidden,
+        offset: offset,
+        limit: limit,
+      );
+
+  /// Reads the first page of what is selected. [focusId]: also make sure that
+  /// poster is loaded (to put the remote on it). [keep]: keep as many
+  /// posters as now (quiet refresh).
+  Future<void> _runQuery({int? focusId, bool keep = false}) async {
+    final token = ++_token;
+    if (mounted) setState(() => _querying = true);
+    try {
+      var limit = keep ? (_visible.length > _page ? _visible.length : _page) : _page;
+      var index = -1;
+      if (focusId != null) {
+        index = await CatalogReads.indexOf(_queryFor(), focusId);
+        if (index >= limit) limit = index + 60;
+      }
+      final rows = await CatalogReads.query(_queryFor(limit: limit));
+      if (!mounted || token != _token) return;
+      setState(() {
+        _visible = [for (final r in rows) widget.toItem(r)];
+        _hasMore = rows.length >= limit;
+        _focusItemId = index >= 0 ? focusId : null;
+        _querying = false;
+      });
+    } catch (_) {
+      if (mounted && token == _token) setState(() => _querying = false);
+    }
+  }
+
+  /// The next page, when the remote gets near the end of what is loaded.
+  Future<void> _loadMore() async {
+    if (!_hasMore || _loadingMore) return;
+    _loadingMore = true;
+    final token = _token;
+    try {
+      final rows = await CatalogReads.query(_queryFor(offset: _visible.length));
+      if (!mounted || token != _token) return;
+      setState(() {
+        _visible = [..._visible, for (final r in rows) widget.toItem(r)];
+        _hasMore = rows.length >= _page;
+      });
+    } catch (_) {
+    } finally {
+      _loadingMore = false;
+    }
+  }
+
   // Read once and kept in memory (re-reading it per item was very slow).
   late Set<int> _favs = _readFavs();
   int _favCount = 0;
 
   Set<int> _readFavs() => widget.favKey == 'fav_movies' ? Storage.favMovies : Storage.favSeries;
 
-  void _refreshFavs() {
+  Future<void> _refreshFavCount() async {
     _favs = _readFavs();
-    _favCount = _data.items.where((i) => _favs.contains(i.id)).length;
+    if (_favs.isEmpty) {
+      _favCount = 0;
+      return;
+    }
+    try {
+      _favCount = await CatalogReads.count(CatalogQuery(CatalogReads.path ?? '', _acc, widget.sec,
+          ids: _favs.toList(), hidden: _hidden));
+    } catch (_) {}
   }
 
   // ------------------------------------------------ back to the last place
@@ -260,16 +344,6 @@ class _CatalogSectionState extends State<CatalogSection> {
   final FocusNode _targetNode = FocusNode();
   final FocusNode _searchNode = FocusNode();
   double _gridWidth = 800;
-
-  void _restoreLastPlace() {
-    final cat = Storage.lastCatalogCategory(widget.section);
-    if (cat != null && (cat == _allId || cat == _favId || _data.categories.any((c) => c.id == cat))) {
-      _categoryId = cat;
-    }
-    _applyFilter();
-    final last = Storage.lastCatalogItem(widget.section);
-    _focusItemId = (last != null && _visible.any((i) => i.id == last)) ? last : null;
-  }
 
   /// Scrolls the grid to the last opened poster and focuses it.
   void _scrollToTarget({int attempt = 0}) {
@@ -305,35 +379,26 @@ class _CatalogSectionState extends State<CatalogSection> {
     await item.onOpen(context);
     // Favorites may have changed on the series screen.
     if (!mounted) return;
-    setState(() {
-      _refreshFavs();
-      if (_categoryId == _favId) _applyFilter();
-    });
+    await _refreshFavCount();
+    if (!mounted) return;
+    if (_categoryId == _favId) {
+      await _runQuery(keep: true);
+    } else {
+      setState(() {});
+    }
   }
 
   Future<void> _toggleFav(CatalogItem item) async {
     final added = await Storage.toggleFav(widget.favKey, item.id);
     if (!mounted) return;
     showToast(context, added ? tr('★  ${item.title} added to favorites', '★  تمت إضافة ${item.title} للمفضلة') : tr('${item.title} removed from favorites', 'تمت إزالة ${item.title} من المفضلة'));
-    setState(() {
-      _refreshFavs();
-      if (_categoryId == _favId) _applyFilter();
-    });
-  }
-
-  void _applyFilter() {
-    Iterable<CatalogItem> list;
-    if (_categoryId == _allId) {
-      list = _data.items;
-    } else if (_categoryId == _favId) {
-      final favs = _favs;
-      list = _data.items.where((i) => favs.contains(i.id));
+    await _refreshFavCount();
+    if (!mounted) return;
+    if (_categoryId == _favId) {
+      await _runQuery(keep: true);
     } else {
-      list = _data.items.where((i) => i.categoryId == _categoryId);
+      setState(() {});
     }
-    final q = searchNorm(_query.trim());
-    if (q.isNotEmpty) list = list.where((i) => searchNorm(i.title).contains(q));
-    _visible = list.toList();
   }
 
   void _selectCategory(String id) {
@@ -341,9 +406,11 @@ class _CatalogSectionState extends State<CatalogSection> {
     _focusItemId = null;
     setState(() {
       _categoryId = id;
-      _applyFilter();
+      _visible = [];
+      _hasMore = false;
     });
     if (_gridScroll.hasClients) _gridScroll.jumpTo(0);
+    _runQuery();
   }
 
   @override
@@ -371,8 +438,8 @@ class _CatalogSectionState extends State<CatalogSection> {
                   fixed: true,
                   icon: Icons.star_rounded,
                   iconColor: AppConfig.accent),
-              CategoryEntry(id: _allId, name: widget.allLabel, count: _data.items.length, fixed: true),
-              ..._data.categories.map((c) => CategoryEntry(id: c.id, name: c.name, count: _counts[c.id] ?? 0)),
+              CategoryEntry(id: _allId, name: widget.allLabel, count: _total, fixed: true),
+              ..._categories.map((c) => CategoryEntry(id: c.id, name: c.name, count: _counts[c.id] ?? 0)),
             ],
           ),
         ),
@@ -388,15 +455,21 @@ class _CatalogSectionState extends State<CatalogSection> {
                     focusNode: _searchNode,
                     hint: widget.searchHint,
                     controller: _searchCtrl,
-                    onChanged: (v) => setState(() {
+                    onChanged: (v) {
                       _query = v;
-                      _applyFilter();
-                    }),
+                      _searchDebounce?.cancel();
+                      _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+                        if (_gridScroll.hasClients) _gridScroll.jumpTo(0);
+                        _runQuery();
+                      });
+                    },
                   ),
                 ),
               ),
               Expanded(
-                child: _visible.isEmpty
+                child: _visible.isEmpty && _querying
+                    ? const Center(child: CircularProgressIndicator())
+                    : _visible.isEmpty
                     ? Center(
                         child: Text(
                           _categoryId == _favId ? tr('No favorites yet.\nHold OK on a poster to add it.', 'ما فيه مفضلة للحين.\nاضغط مطوّل على OK فوق البوستر عشان تضيفه.') : tr('Nothing here', 'لا يوجد محتوى'),
@@ -422,6 +495,7 @@ class _CatalogSectionState extends State<CatalogSection> {
                           ),
                           itemCount: _visible.length,
                           itemBuilder: (context, i) {
+                            if (i >= _visible.length - 60) _loadMore();
                             final item = _visible[i];
                             return PosterCard(
                               item: item,

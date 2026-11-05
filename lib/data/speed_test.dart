@@ -4,6 +4,8 @@ import 'package:http/http.dart' as http;
 
 import '../config.dart';
 import '../player/player_service.dart';
+import 'catalog_db.dart';
+import 'models.dart';
 import 'xtream_api.dart';
 
 /// Settings > Internet: how fast the internet is, and how fast the channels
@@ -119,8 +121,8 @@ class SpeedTest {
     // Only lists already saved on the TV (never a big download just for this).
     try {
       if (api.savedAt('vod') != null) {
-        final movies = await api.vodStreams();
-        if (movies.isNotEmpty) url = api.movieUrl(movies[movies.length ~/ 2]);
+        final rows = await CatalogReads.query(CatalogQuery(CatalogReads.path ?? '', api.account, 'vod', offset: 50, limit: 1));
+        if (rows.isNotEmpty) url = api.movieUrl(rows.first as Movie);
       }
     } catch (_) {}
     if (url == null) {

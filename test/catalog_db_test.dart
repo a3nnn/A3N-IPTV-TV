@@ -161,6 +161,33 @@ void main() {
     expect(readMs, lessThan(5000));
   });
 
+  test('pages for the screens: categories, one category, search, favorites, place', () async {
+    final path = '${dir.path}/catalog.db';
+    final sw = Stopwatch()..start();
+    final sum = await CatalogReads.summary('user', 'series');
+    final sumMs = sw.elapsedMilliseconds;
+    expect(sum.categories.length, 120);
+    expect(sum.counts['7'], 500);
+    sw.reset();
+    final page = await CatalogReads.query(CatalogQuery(path, 'user', 'series', cat: '7', limit: 300));
+    final pageMs = sw.elapsedMilliseconds;
+    expect(page.length, 300);
+    expect((page.first as Series).categoryId, '7');
+    final all = await CatalogReads.query(CatalogQuery(path, 'user', 'series', offset: 300, limit: 300));
+    expect((all.first as Series).id, 100300);
+    final hidden = await CatalogReads.count(CatalogQuery(path, 'user', 'series', hidden: ['7', '8']));
+    expect(hidden, 59000);
+    final found = await CatalogReads.query(CatalogQuery(path, 'user', 'series', search: 'مسلسل 4242 {'));
+    expect(found.length, 1);
+    expect((found.first as Series).id, 104242);
+    final favs = await CatalogReads.count(CatalogQuery(path, 'user', 'series', ids: [100001, 100002, 999]));
+    expect(favs, 2);
+    final idx = await CatalogReads.indexOf(CatalogQuery(path, 'user', 'series', cat: '7'), 100000 + 7 + 120 * 10);
+    expect(idx, 10);
+    // ignore: avoid_print
+    print('summary ${sumMs}ms, one category page ${pageMs}ms');
+  });
+
   test('download cut in the middle: the saved list is kept', () async {
     cutHalfway = true;
     Object? error;

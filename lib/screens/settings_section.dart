@@ -393,6 +393,10 @@ class _SettingsSectionState extends State<SettingsSection> {
         // Settings of the open group
         Expanded(
           child: FocusTraversalGroup(
+            // ▲ on the first setting / ▼ on the last stay here (never jump
+            // to the groups or the menu beside).
+            child: StayInList(
+            stopAtTop: true,
             child: ListView(
               key: ValueKey(_group),
               padding: const EdgeInsets.fromLTRB(36, 30, 36, 30),
@@ -413,6 +417,7 @@ class _SettingsSectionState extends State<SettingsSection> {
                   ),
                 ),
               ],
+            ),
             ),
           ),
         ),

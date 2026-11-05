@@ -6,6 +6,7 @@ import 'dart:typed_data';
 
 import 'package:sqlite3/sqlite3.dart';
 
+import '../utils.dart' show searchNorm;
 import 'models.dart';
 
 /// The channel / movie / series lists, saved on the TV in a small SQLite
@@ -50,7 +51,12 @@ class CatalogDb {
     db.execute('CREATE TABLE IF NOT EXISTS cats(acc TEXT, sec TEXT, pos INTEGER, id TEXT, name TEXT)');
     db.execute('CREATE TABLE IF NOT EXISTS items(acc TEXT, sec TEXT, pos INTEGER, id INTEGER, num INTEGER, '
         'cat TEXT, name TEXT, img TEXT, rating REAL, ext TEXT)');
+    try {
+      // Search text (lower case, Arabic letter variants as one), added in 1.5.1.
+      db.execute('ALTER TABLE items ADD COLUMN nname TEXT');
+    } catch (_) {}
     db.execute('CREATE INDEX IF NOT EXISTS items_sec ON items(acc, sec, pos)');
+    db.execute('CREATE INDEX IF NOT EXISTS items_cat ON items(acc, sec, cat, pos)');
     db.execute('CREATE INDEX IF NOT EXISTS cats_sec ON cats(acc, sec, pos)');
     return db;
   }
@@ -254,9 +260,19 @@ class CatalogDb {
       // 2/2: the items (big): read piece by piece, one item at a time.
       report(2, 0, 0, force: true);
       final res = await open(_actions(a.sec, false));
-      final total = res.contentLength > 0 ? res.contentLength : 0;
+      // Size for the percentage: from the server, or the size of the last
+      // download (the server often doesn't say).
+      var total = res.contentLength > 0 ? res.contentLength : 0;
+      var guessed = false;
+      if (total == 0) {
+        final r = db.select('SELECT v FROM meta WHERE k = ?', ['size|$acc|${a.sec}']);
+        if (r.isNotEmpty) {
+          total = int.tryParse('${r.first.columnAt(0)}') ?? 0;
+          guessed = total > 0;
+        }
+      }
       final ins = db.prepare(
-          'INSERT INTO items(acc, sec, pos, id, num, cat, name, img, rating, ext) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+          'INSERT INTO items(acc, sec, pos, id, num, cat, name, img, rating, ext, nname) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
       var pos = 0;
       var inTx = false;
       void addItem(Uint8List bytes) {
@@ -275,13 +291,13 @@ class CatalogDb {
         switch (a.sec) {
           case 'live':
             final c = LiveChannel.fromJson(j);
-            ins.execute([acc, stage, pos++, c.id, c.number, c.categoryId, c.name, c.logo, 0.0, '']);
+            ins.execute([acc, stage, pos++, c.id, c.number, c.categoryId, c.name, c.logo, 0.0, '', searchNorm(c.name)]);
           case 'vod':
             final v = Movie.fromJson(j);
-            ins.execute([acc, stage, pos++, v.id, 0, v.categoryId, v.name, v.poster, v.rating, v.ext]);
+            ins.execute([acc, stage, pos++, v.id, 0, v.categoryId, v.name, v.poster, v.rating, v.ext, searchNorm(v.name)]);
           default:
             final s = Series.fromJson(j);
-            ins.execute([acc, stage, pos++, s.id, 0, s.categoryId, s.name, s.cover, s.rating, '']);
+            ins.execute([acc, stage, pos++, s.id, 0, s.categoryId, s.name, s.cover, s.rating, '', searchNorm(s.name)]);
         }
         if (pos % 4000 == 0) {
           db.execute('COMMIT');
@@ -295,7 +311,8 @@ class CatalogDb {
         await for (final chunk in res.timeout(const Duration(seconds: 30))) {
           received += chunk.length;
           splitter.add(chunk);
-          report(2, received, total);
+          // A guess may be a little small: never show more than 99 %.
+          report(2, received, guessed && received >= total ? received + 1 : total);
         }
       } catch (e) {
         if (inTx) db.execute('ROLLBACK');
@@ -322,6 +339,7 @@ class CatalogDb {
         db.execute('UPDATE cats SET sec = ? WHERE acc = ? AND sec = ?', [a.sec, acc, stage]);
         db.execute('INSERT OR REPLACE INTO meta(k, v) VALUES (?, ?)',
             ['upd|$acc|${a.sec}', '${DateTime.now().millisecondsSinceEpoch}']);
+        db.execute('INSERT OR REPLACE INTO meta(k, v) VALUES (?, ?)', ['size|$acc|${a.sec}', '$received']);
         db.execute('COMMIT');
       } catch (_) {
         db.execute('ROLLBACK');
@@ -400,3 +418,153 @@ class JsonArraySplitter {
     }
   }
 }
+
+/// One page of a section, for the screens: a category, the favorites, a
+/// search... Only plain values (sent to a background isolate).
+class CatalogQuery {
+  final String path, acc, sec;
+  final String? cat; // null = all
+  final List<int>? ids; // favorites
+  final String search; // already searchNorm()
+  final List<String> hidden; // categories hidden with Category Manager
+  final int offset, limit;
+  const CatalogQuery(this.path, this.acc, this.sec,
+      {this.cat, this.ids, this.search = '', this.hidden = const [], this.offset = 0, this.limit = 300});
+
+  CatalogQuery page(int offset, int limit) =>
+      CatalogQuery(path, acc, sec, cat: cat, ids: ids, search: search, hidden: hidden, offset: offset, limit: limit);
+
+  (String, List<Object?>) where() {
+    final sql = StringBuffer('acc = ? AND sec = ?');
+    final args = <Object?>[acc, sec];
+    if (cat != null) {
+      sql.write(' AND cat = ?');
+      args.add(cat);
+    }
+    if (ids != null) {
+      // Plain numbers only, so they can be written in the query itself.
+      sql.write(' AND id IN (${ids!.isEmpty ? '-1' : ids!.join(',')})');
+    }
+    if (hidden.isNotEmpty) {
+      sql.write(' AND cat NOT IN (${List.filled(hidden.length, '?').join(',')})');
+      args.addAll(hidden);
+    }
+    if (search.isNotEmpty) {
+      final q = search.replaceAll(r'\', r'\\').replaceAll('%', r'\%').replaceAll('_', r'\_');
+      sql.write(r" AND nname LIKE ? ESCAPE '\'");
+      args.add('%$q%');
+    }
+    return (sql.toString(), args);
+  }
+}
+
+/// Section summary for the category list: categories (server order) and
+/// how many items each has.
+class CatalogSummary {
+  final List<Category> categories;
+  final Map<String, int> counts;
+  const CatalogSummary(this.categories, this.counts);
+}
+
+extension CatalogQueries on CatalogDb {
+  static Object _model(String sec, Row r) {
+    final id = (r.columnAt(0) as int?) ?? 0;
+    final cat = '${r.columnAt(2) ?? ''}';
+    final name = '${r.columnAt(3) ?? ''}';
+    final img = '${r.columnAt(4) ?? ''}';
+    final rating = (r.columnAt(5) as num?)?.toDouble() ?? 0;
+    switch (sec) {
+      case 'live':
+        return LiveChannel(id: id, number: (r.columnAt(1) as int?) ?? 0, name: name, logo: img, categoryId: cat);
+      case 'vod':
+        return Movie(id: id, name: name, poster: img, categoryId: cat, rating: rating, ext: '${r.columnAt(6) ?? 'mp4'}');
+      default:
+        return Series(id: id, name: name, cover: img, categoryId: cat, rating: rating, plot: '');
+    }
+  }
+
+  /// Categories + counts (no items: instant even for 100 000 titles).
+  static CatalogSummary summaryNow(String path, String acc, String sec) {
+    final db = CatalogDb._open(path);
+    try {
+      // Lists saved by 1.5.0 have no search text yet: fill it once.
+      final missing = db.select('SELECT COUNT(*) FROM items WHERE acc = ? AND sec = ? AND nname IS NULL', [acc, sec]);
+      if (((missing.first.columnAt(0) as int?) ?? 0) > 0) {
+        final rows = db.select('SELECT rowid, name FROM items WHERE acc = ? AND sec = ? AND nname IS NULL', [acc, sec]);
+        final up = db.prepare('UPDATE items SET nname = ? WHERE rowid = ?');
+        db.execute('BEGIN');
+        for (final r in rows) {
+          up.execute([searchNorm('${r.columnAt(1) ?? ''}'), r.columnAt(0)]);
+        }
+        db.execute('COMMIT');
+        up.dispose();
+      }
+      final cats = <Category>[
+        for (final r in db.select('SELECT id, name FROM cats WHERE acc = ? AND sec = ? ORDER BY pos', [acc, sec]))
+          Category('${r.columnAt(0) ?? ''}', '${r.columnAt(1) ?? ''}'),
+      ];
+      final counts = <String, int>{
+        for (final r in db.select('SELECT cat, COUNT(*) FROM items WHERE acc = ? AND sec = ? GROUP BY cat', [acc, sec]))
+          '${r.columnAt(0) ?? ''}': (r.columnAt(1) as int?) ?? 0,
+      };
+      return CatalogSummary(cats, counts);
+    } finally {
+      db.dispose();
+    }
+  }
+
+  /// One page of items (LiveChannel / Movie / Series) in server order.
+  static List<Object> queryNow(CatalogQuery q) {
+    final db = CatalogDb._open(q.path);
+    try {
+      final (w, args) = q.where();
+      final rows = db.select(
+          'SELECT id, num, cat, name, img, rating, ext FROM items WHERE $w ORDER BY pos LIMIT ? OFFSET ?', [...args, q.limit, q.offset]);
+      return [for (final r in rows) _model(q.sec, r)];
+    } finally {
+      db.dispose();
+    }
+  }
+
+  /// How many items match (favorites count...).
+  static int countNow(CatalogQuery q) {
+    final db = CatalogDb._open(q.path);
+    try {
+      final (w, args) = q.where();
+      return (db.select('SELECT COUNT(*) FROM items WHERE $w', args).first.columnAt(0) as int?) ?? 0;
+    } finally {
+      db.dispose();
+    }
+  }
+
+  /// Place of item [id] in the matching list (to open the page on it), or -1.
+  static int indexOfNow(CatalogQuery q, int id) {
+    final db = CatalogDb._open(q.path);
+    try {
+      final (w, args) = q.where();
+      final p = db.select('SELECT pos FROM items WHERE acc = ? AND sec = ? AND id = ? LIMIT 1', [q.acc, q.sec, id]);
+      if (p.isEmpty) return -1;
+      final pos = p.first.columnAt(0);
+      final inList = db.select('SELECT 1 FROM items WHERE $w AND id = ? LIMIT 1', [...args, id]);
+      if (inList.isEmpty) return -1;
+      return (db.select('SELECT COUNT(*) FROM items WHERE $w AND pos < ?', [...args, pos]).first.columnAt(0) as int?) ?? 0;
+    } finally {
+      db.dispose();
+    }
+  }
+}
+
+/// The screens' entry points (each runs on a background isolate).
+class CatalogReads {
+  static String? get path => CatalogDb._path;
+
+  static Future<CatalogSummary> summary(String acc, String sec) {
+    final p = CatalogDb._path!;
+    return Isolate.run(() => CatalogQueries.summaryNow(p, acc, sec));
+  }
+
+  static Future<List<Object>> query(CatalogQuery q) => Isolate.run(() => CatalogQueries.queryNow(q));
+  static Future<int> count(CatalogQuery q) => Isolate.run(() => CatalogQueries.countNow(q));
+  static Future<int> indexOf(CatalogQuery q, int id) => Isolate.run(() => CatalogQueries.indexOfNow(q, id));
+}
+

@@ -136,6 +136,23 @@ class XtreamApi {
     }
   }
 
+  /// The account the lists are saved under.
+  String get account => username;
+
+  /// Makes sure [sec] is saved on the TV (downloads it the first time, with
+  /// the progress under the loading circle).
+  Future<void> ensureSaved(String sec) async {
+    if (savedAt(sec) != null) return;
+    final k = _key(sec);
+    _waiting.add(k);
+    try {
+      await _download(sec);
+    } finally {
+      _waiting.remove(k);
+      loadStatus.value = null;
+    }
+  }
+
   /// Downloads [sec] into the database (one download per section at a time;
   /// asking again joins the running one).
   Future<int> _download(String sec) {
@@ -155,12 +172,15 @@ class XtreamApi {
               out.value = tr('Saving the $name list...', 'جاري حفظ قائمة $name...');
               return;
             }
-            final size = bytes <= 0
-                ? ''
-                : total > 0
-                    ? ' (${_mb(bytes)} / ${_mb(total)} ${tr('MB', 'ميقا')})'
-                    : ' (${_mb(bytes)} ${tr('MB', 'ميقا')})';
-            out.value = tr('Loading your $name list... $step/2$size', 'جاري تحميل قائمة $name... $step/2$size');
+            if (step == 1) {
+              out.value = tr('Loading the $name categories...', 'جاري تحميل أقسام $name...');
+              return;
+            }
+            // A percentage when the size is known (from the server or the last
+            // download), otherwise the MB received (very first download).
+            final pct = total > 0 ? (bytes * 100 ~/ total).clamp(0, 99) : -1;
+            final done = pct >= 0 ? '$pct%' : (bytes > 0 ? '${_mb(bytes)} ${tr('MB', 'ميقا')}' : '');
+            out.value = tr('Loading your $name list... $done', 'جاري تحميل قائمة $name... $done');
           },
         );
       } catch (e) {
