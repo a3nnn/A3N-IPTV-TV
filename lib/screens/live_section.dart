@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../config.dart';
+import '../data/catalog_db.dart';
 import '../data/category_filter.dart';
 import '../data/models.dart';
 import '../data/storage.dart';
@@ -41,7 +42,10 @@ class _LiveSectionState extends State<LiveSection> {
   bool _loading = true;
   String? _error;
   List<Category> _categories = [];
-  List<LiveChannel> _all = [];
+  int _total = 0;
+  List<String> _hidden = [];
+  int _token = 0;
+  Timer? _searchDebounce;
   Map<String, int> _counts = {};
   Set<int> _favorites = {};
   String _categoryId = _allId;
@@ -76,6 +80,7 @@ class _LiveSectionState extends State<LiveSection> {
     _svc.exitFullscreen.removeListener(_onExitRequest);
     _ticker?.cancel();
     _zapTimer?.cancel();
+    _searchDebounce?.cancel();
     _clock.dispose();
     _overlayTimer?.cancel();
     _channelScroll.dispose();
@@ -87,32 +92,58 @@ class _LiveSectionState extends State<LiveSection> {
 
   // ------------------------------------------------------------ data
 
+  // The channels are read from the database a category at a time (only
+  // what is on screen), like the movies and series.
+  String get _acc => Session.api?.account ?? '';
+
+  CatalogQuery _queryFor({String? catId, bool withSearch = true}) {
+    final c = catId ?? _categoryId;
+    return CatalogQuery(
+      CatalogReads.path ?? '',
+      _acc,
+      'live',
+      cat: (c == _allId || c == _favId) ? null : c,
+      ids: c == _favId ? _favorites.toList() : null,
+      search: withSearch ? searchNorm(_query.trim()) : '',
+      hidden: _hidden,
+      limit: 1000000,
+    );
+  }
+
   Future<void> _load() async {
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final api = Session.api!;
-      final results = await loadWithLimit(Future.wait<Object>([api.liveCategories(), api.liveStreams()]));
-      // Categories hidden with A3N Category Manager disappear with their channels.
-      final allCats = results[0] as List<Category>;
-      final hidden = await CategoryFilter.hiddenIds('live', allCats);
-      final cats = allCats.where((c) => !hidden.contains(c.id)).toList();
-      final chans = (results[1] as List<LiveChannel>).where((c) => !hidden.contains(c.categoryId)).toList();
-      final counts = <String, int>{};
-      for (final c in chans) {
-        counts[c.categoryId] = (counts[c.categoryId] ?? 0) + 1;
-      }
+      await loadWithLimit(() async {
+        await Session.api!.ensureSaved('live'); // first time: download (with %)
+        XtreamApi.loadStatus.value = tr('Opening the list...', 'جاري فتح القائمة...');
+        try {
+          final sum = await CatalogReads.summary(_acc, 'live');
+          // Categories hidden with A3N Category Manager disappear with their channels.
+          final hidden = await CategoryFilter.hiddenIds('live', sum.categories);
+          _hidden = hidden.toList();
+          _categories = sum.categories.where((c) => !hidden.contains(c.id)).toList();
+          _counts = {for (final e in sum.counts.entries) if (!hidden.contains(e.key)) e.key: e.value};
+          _total = _counts.values.fold(0, (a, b) => a + b);
+          _favCount = _favorites.isEmpty
+              ? 0
+              : await CatalogReads.count(CatalogQuery(CatalogReads.path ?? '', _acc, 'live',
+                  ids: _favorites.toList(), hidden: _hidden));
+          final lastCat = Storage.lastCategory;
+          if (lastCat != null &&
+              (lastCat == _favId || lastCat == _allId || _categories.any((c) => c.id == lastCat))) {
+            _categoryId = lastCat;
+          }
+          _visible = (await CatalogReads.query(_queryFor())).cast<LiveChannel>().toList();
+        } finally {
+          XtreamApi.loadStatus.value = null;
+        }
+      }());
       if (!mounted) return;
-      setState(() {
-        _categories = cats;
-        _all = chans;
-        _counts = counts;
-        _favCount = chans.where((c) => _favorites.contains(c.id)).length;
-        _loading = false;
-      });
-      _restoreLast();
+      setState(() => _loading = false);
+      await _restoreLast();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -122,24 +153,25 @@ class _LiveSectionState extends State<LiveSection> {
     }
   }
 
-  void _restoreLast() {
-    final lastCat = Storage.lastCategory;
-    if (lastCat != null &&
-        (lastCat == _favId || lastCat == _allId || _categories.any((c) => c.id == lastCat))) {
-      _categoryId = lastCat;
-    }
-    _applyFilter();
-
+  Future<void> _restoreLast() async {
     final lastId = Storage.lastChannel;
     LiveChannel? channel;
     if (lastId != null) {
-      for (final c in _all) {
+      for (final c in _visible) {
         if (c.id == lastId) {
           channel = c;
           break;
         }
       }
+      if (channel == null) {
+        try {
+          final r = await CatalogReads.query(CatalogQuery(CatalogReads.path ?? '', _acc, 'live',
+              ids: [lastId], hidden: _hidden, limit: 1));
+          if (r.isNotEmpty) channel = r.first as LiveChannel;
+        } catch (_) {}
+      }
     }
+    if (!mounted) return;
     if (channel != null) {
       _select(channel, scroll: true, play: Storage.previewEnabled);
       // Put the remote's focus on that channel (coming from the start menu).
@@ -153,26 +185,20 @@ class _LiveSectionState extends State<LiveSection> {
     }
   }
 
-  void _applyFilter() {
-    Iterable<LiveChannel> list;
-    if (_categoryId == _favId) {
-      list = _all.where((c) => _favorites.contains(c.id));
-    } else if (_categoryId == _allId) {
-      list = _all;
-    } else {
-      list = _all.where((c) => c.categoryId == _categoryId);
-    }
-    final q = searchNorm(_query.trim());
-    if (q.isNotEmpty) list = list.where((c) => searchNorm(c.name).contains(q));
-    _visible = list.toList();
+  /// Reads the channels of what is selected (category / favorites / search).
+  Future<void> _applyFilter() async {
+    final token = ++_token;
+    try {
+      final rows = await CatalogReads.query(_queryFor());
+      if (!mounted || token != _token) return;
+      setState(() => _visible = rows.cast<LiveChannel>().toList());
+    } catch (_) {}
   }
 
   void _selectCategory(String id) {
-    setState(() {
-      _categoryId = id;
-      _applyFilter();
-    });
+    setState(() => _categoryId = id);
     if (_channelScroll.hasClients) _channelScroll.jumpTo(0);
+    _applyFilter();
   }
 
   /// [delay] > 0 is used while zapping: the name/logo change at once, the
@@ -235,8 +261,8 @@ class _LiveSectionState extends State<LiveSection> {
         _favorites.add(c.id);
         _favCount++;
       }
-      if (_categoryId == _favId) _applyFilter();
     });
+    if (_categoryId == _favId) _applyFilter();
     Storage.setFavorites(_favorites);
   }
 
@@ -353,7 +379,7 @@ class _LiveSectionState extends State<LiveSection> {
         CategoryEntry(
             id: _favId, name: tr('Favorites', 'المفضلة'), count: favCount, fixed: true,
             icon: Icons.star_rounded, iconColor: AppConfig.accent),
-        CategoryEntry(id: _allId, name: tr('All Channels', 'كل القنوات'), count: _all.length, fixed: true),
+        CategoryEntry(id: _allId, name: tr('All Channels', 'كل القنوات'), count: _total, fixed: true),
         ..._categories.map((c) => CategoryEntry(id: c.id, name: c.name, count: _counts[c.id] ?? 0)),
       ],
     );
@@ -368,10 +394,11 @@ class _LiveSectionState extends State<LiveSection> {
             focusNode: _searchNode,
             hint: tr('Search channels', 'ابحث في القنوات'),
             controller: _searchCtrl,
-            onChanged: (v) => setState(() {
+            onChanged: (v) {
               _query = v;
-              _applyFilter();
-            }),
+              _searchDebounce?.cancel();
+              _searchDebounce = Timer(const Duration(milliseconds: 300), _applyFilter);
+            },
           ),
         ),
         Expanded(

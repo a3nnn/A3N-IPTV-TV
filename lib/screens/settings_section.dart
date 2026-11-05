@@ -85,6 +85,8 @@ class _SettingsSectionState extends State<SettingsSection> {
     for (final n in _groupNodes) {
       n.dispose();
     }
+    _contentRoot.dispose();
+    _contentScroll.dispose();
     super.dispose();
   }
 
@@ -104,9 +106,117 @@ class _SettingsSectionState extends State<SettingsSection> {
     _groupNodes[i].requestFocus();
   }
 
-  /// ▲ ▼ inside the group list change the group (and never leave the list).
+  final FocusNode _contentRoot = FocusNode(canRequestFocus: false, skipTraversal: true);
+  final ScrollController _contentScroll = ScrollController();
+  FocusNode? _lastInContent;
+  int _lastContentGroup = -1;
+
+  bool get _rtl => Directionality.of(context) == TextDirection.rtl;
+
+  /// The arrow that goes from the settings back to the groups column.
+  LogicalKeyboardKey get _towardGroups => _rtl ? LogicalKeyboardKey.arrowRight : LogicalKeyboardKey.arrowLeft;
+  LogicalKeyboardKey get _towardContent => _rtl ? LogicalKeyboardKey.arrowLeft : LogicalKeyboardKey.arrowRight;
+
+  List<FocusNode> _contentNodes() => _contentRoot.traversalDescendants
+      .where((n) => n.canRequestFocus && !n.skipTraversal && n.context != null && n.context!.mounted)
+      .toList();
+
+  void _focusContent() {
+    final last = _lastInContent;
+    if (last != null && _lastContentGroup == _group && last.context != null && last.canRequestFocus) {
+      last.requestFocus();
+      return;
+    }
+    final nodes = _contentNodes();
+    if (nodes.isEmpty) return; // nothing to press here (remote control help)
+    nodes.sort((a, b) {
+      final d = a.rect.top.compareTo(b.rect.top);
+      return d != 0 ? d : (_rtl ? b.rect.left.compareTo(a.rect.left) : a.rect.left.compareTo(b.rect.left));
+    });
+    nodes.first.requestFocus();
+  }
+
+  void _show(FocusNode n) {
+    n.requestFocus();
+    final ctx = n.context;
+    if (ctx != null) Scrollable.ensureVisible(ctx, alignment: 0.5, duration: const Duration(milliseconds: 120));
+  }
+
+  /// Moves inside the settings column only.
+  KeyEventResult _contentKeys(FocusNode node, KeyEvent e) {
+    if (e is! KeyDownEvent && e is! KeyRepeatEvent) return KeyEventResult.ignored;
+    final k = e.logicalKey;
+    final cur = FocusManager.instance.primaryFocus;
+    if (cur == null || !_contentRoot.hasFocus) return KeyEventResult.ignored;
+    _lastInContent = cur;
+    _lastContentGroup = _group;
+    final r = cur.rect;
+    final others = _contentNodes().where((n) => n != cur).toList();
+
+    if (k == LogicalKeyboardKey.arrowUp || k == LogicalKeyboardKey.arrowDown) {
+      final down = k == LogicalKeyboardKey.arrowDown;
+      FocusNode? best;
+      double bestScore = double.infinity;
+      for (final n in others) {
+        final o = n.rect;
+        final dy = down ? o.top - r.bottom : r.top - o.bottom;
+        if (dy < -r.height / 2) continue; // not above / below
+        final dx = (o.center.dx - r.center.dx).abs();
+        final score = dy.clamp(0, double.infinity) * 4 + dx;
+        if (score < bestScore) {
+          bestScore = score;
+          best = n;
+        }
+      }
+      if (best != null) {
+        _show(best);
+        _lastInContent = best;
+      } else if (_contentScroll.hasClients) {
+        // Nothing more built below / above: scroll a bit, but stay here.
+        final p = _contentScroll.position;
+        p.animateTo((p.pixels + (down ? 120 : -120)).clamp(0.0, p.maxScrollExtent),
+            duration: const Duration(milliseconds: 120), curve: Curves.easeOut);
+      }
+      return KeyEventResult.handled;
+    }
+
+    if (k == LogicalKeyboardKey.arrowLeft || k == LogicalKeyboardKey.arrowRight) {
+      final toRight = k == LogicalKeyboardKey.arrowRight;
+      // Another button on the same line in that direction?
+      FocusNode? best;
+      double bestDx = double.infinity;
+      for (final n in others) {
+        final o = n.rect;
+        final sameLine = o.top < r.bottom - 4 && o.bottom > r.top + 4;
+        if (!sameLine) continue;
+        final dx = toRight ? o.left - r.right : r.left - o.right;
+        if (dx < -4) continue;
+        if (dx < bestDx) {
+          bestDx = dx;
+          best = n;
+        }
+      }
+      if (best != null) {
+        _show(best);
+        _lastInContent = best;
+        return KeyEventResult.handled;
+      }
+      if (k == _towardGroups) {
+        _groupNodes[_group].requestFocus();
+      }
+      return KeyEventResult.handled; // never anywhere else
+    }
+    return KeyEventResult.ignored;
+  }
+
+  /// ▲ ▼ inside the group list change the group (and never leave the list);
+  /// toward the settings goes into them.
   KeyEventResult _groupKeys(FocusNode node, KeyEvent e) {
     if (e is! KeyDownEvent && e is! KeyRepeatEvent) return KeyEventResult.ignored;
+    if (e.logicalKey == _towardContent) {
+      _focusContent();
+      return KeyEventResult.handled;
+    }
     if (e.logicalKey == LogicalKeyboardKey.arrowDown) {
       _selectGroup((_group + 1).clamp(0, _groupNodes.length - 1));
       return KeyEventResult.handled;
@@ -392,12 +502,16 @@ class _SettingsSectionState extends State<SettingsSection> {
         const VerticalDivider(width: 1),
         // Settings of the open group
         Expanded(
-          child: FocusTraversalGroup(
-            // ▲ on the first setting / ▼ on the last stay here (never jump
-            // to the groups or the menu beside).
-            child: StayInList(
-            stopAtTop: true,
+          child: Focus(
+            // The remote moves inside this column by itself: ▲ ▼ never leave
+            // it, ◀ ▶ go to the next button on the same line, or back to the
+            // groups.
+            focusNode: _contentRoot,
+            canRequestFocus: false,
+            skipTraversal: true,
+            onKeyEvent: _contentKeys,
             child: ListView(
+              controller: _contentScroll,
               key: ValueKey(_group),
               padding: const EdgeInsets.fromLTRB(36, 30, 36, 30),
               children: [
@@ -417,7 +531,6 @@ class _SettingsSectionState extends State<SettingsSection> {
                   ),
                 ),
               ],
-            ),
             ),
           ),
         ),
