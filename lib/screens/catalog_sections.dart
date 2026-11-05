@@ -404,6 +404,10 @@ class _CatalogSectionState extends State<CatalogSection> {
   void _selectCategory(String id) {
     Storage.setLastCatalogCategory(widget.section, id);
     _focusItemId = null;
+    // A new category starts without the old search.
+    _searchDebounce?.cancel();
+    _query = '';
+    _searchCtrl.clear();
     setState(() {
       _categoryId = id;
       _visible = [];

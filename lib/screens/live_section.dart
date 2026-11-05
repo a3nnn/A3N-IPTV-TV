@@ -196,6 +196,10 @@ class _LiveSectionState extends State<LiveSection> {
   }
 
   void _selectCategory(String id) {
+    // A new category starts without the old search.
+    _searchDebounce?.cancel();
+    _query = '';
+    _searchCtrl.clear();
     setState(() => _categoryId = id);
     if (_channelScroll.hasClients) _channelScroll.jumpTo(0);
     _applyFilter();
