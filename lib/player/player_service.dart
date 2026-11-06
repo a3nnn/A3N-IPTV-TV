@@ -3,25 +3,26 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
-import 'package:video_player/video_player.dart';
+import 'package:a3n_exo/a3n_exo.dart';
 
 import '../config.dart';
 import '../data/storage.dart';
+import '../widgets/sub_style.dart';
 
 /// One shared player for the whole app, so switching channels is instant
 /// and only one connection to the server is used at a time.
 ///
 /// Two engines, picked in Settings ("Video player"), read once at start:
-///  * mpv (default): video decoded AND drawn by the TV's video chip, with
-///    audio / subtitle choice.
-///  * System player (Android ExoPlayer): for old TVs / Fire Sticks where mpv
-///    can't use the video chip. No audio / subtitle choice.
+///  * ExoPlayer (default, package a3n_exo): Android's own player on a real
+///    video surface, with audio / subtitle choice, frame rate, HDR info. A
+///    stream it can't decode is played by mpv instead, by itself.
+///  * mpv (the other choice): kept for the rare stream / TV it suits better.
 ///
-/// The screens only use the methods below, never an engine directly
-/// (except the audio / subtitle menu, which is mpv only).
+/// The screens only use the methods below, never an engine directly.
 class PlayerService {
   PlayerService._() {
     if (!isExo) _tune();
+    if (isExo) SubStyle.changed.addListener(() => unawaited(_exoSubStyle()));
   }
   static final PlayerService instance = PlayerService._();
 
@@ -105,13 +106,7 @@ class PlayerService {
 
   // ------------------------------------------------------------ ExoPlayer
 
-  /// The ExoPlayer of the stream on screen (null while none / opening).
-  final ValueNotifier<VideoPlayerController?> _exoNow = ValueNotifier<VideoPlayerController?>(null);
-  VideoPlayerController? _exo;
-
-  /// Why the system player couldn't play (shown on the picture), null = fine.
-  final ValueNotifier<String?> _exoError = ValueNotifier<String?>(null);
-
+  // State of the ExoPlayer stream on screen (from the native events).
   final StreamController<Duration> _posCtl = StreamController<Duration>.broadcast();
   final StreamController<Duration> _durCtl = StreamController<Duration>.broadcast();
   final StreamController<bool> _playCtl = StreamController<bool>.broadcast();
@@ -121,74 +116,94 @@ class PlayerService {
   Duration _xPos = Duration.zero, _xDur = Duration.zero;
   bool _xPlaying = false, _xBuffering = false;
   (int, int) _xSize = (0, 0);
+  double _xFps = 0;
+  String _xCodec = '', _xHdr = '';
 
-  void _exoTick() {
-    final c = _exo;
-    if (c == null) return;
-    final v = c.value;
-    if (v.position != _xPos) _posCtl.add(_xPos = v.position);
-    if (v.duration != _xDur) _durCtl.add(_xDur = v.duration);
-    if (v.isPlaying != _xPlaying) _playCtl.add(_xPlaying = v.isPlaying);
-    final buf = v.isBuffering || (!v.isInitialized && !v.hasError);
-    if (buf != _xBuffering) _bufCtl.add(_xBuffering = buf);
-    if (v.hasError && _exoError.value == null) {
-      _exoError.value = v.errorDescription ?? 'unknown error';
-    }
-    final size = (v.size.width.round(), v.size.height.round());
-    if (size != _xSize) _sizeCtl.add(_xSize = size);
+  /// Why ExoPlayer couldn't play (shown on the picture), null = fine.
+  final ValueNotifier<String?> _exoError = ValueNotifier<String?>(null);
+
+  /// This stream is played by mpv instead (ExoPlayer couldn't decode it).
+  final ValueNotifier<bool> _fallback = ValueNotifier<bool>(false);
+
+  /// Bumped when the audio / subtitle tracks of the stream change.
+  final ValueNotifier<int> tracksChanged = ValueNotifier<int>(0);
+
+  StreamSubscription<Map<dynamic, dynamic>>? _exoEvents;
+
+  void _exoListen() {
+    _exoEvents ??= A3nExo.events.listen((m) {
+      switch (m['event']) {
+        case 'tracks':
+          tracksChanged.value++;
+        case 'error':
+          _exoError.value = '${m['message'] ?? m['code'] ?? 'error'}';
+          if (m['decoder'] == true && _currentUrl != null && !_fallback.value) {
+            unawaited(_toMpv(_currentUrl!));
+          }
+        case 'state':
+          if (_fallback.value) return;
+          final pos = Duration(milliseconds: (m['position'] as num?)?.toInt() ?? 0);
+          final dur = Duration(milliseconds: (m['duration'] as num?)?.toInt() ?? 0);
+          final playing = m['playing'] == true;
+          final buf = m['buffering'] == true;
+          final size = ((m['width'] as num?)?.toInt() ?? 0, (m['height'] as num?)?.toInt() ?? 0);
+          _xFps = (m['fps'] as num?)?.toDouble() ?? 0;
+          _xCodec = '${m['codec'] ?? ''}';
+          _xHdr = '${m['hdr'] ?? ''}';
+          if (pos != _xPos) _posCtl.add(_xPos = pos);
+          if (dur != _xDur) _durCtl.add(_xDur = dur);
+          if (playing != _xPlaying) _playCtl.add(_xPlaying = playing);
+          if (buf != _xBuffering) _bufCtl.add(_xBuffering = buf);
+          if (size != _xSize) _sizeCtl.add(_xSize = size);
+      }
+    });
   }
 
   void _exoReset() {
+    _exoError.value = null;
+    _xFps = 0;
+    _xCodec = '';
+    _xHdr = '';
     _posCtl.add(_xPos = Duration.zero);
     _durCtl.add(_xDur = Duration.zero);
     _playCtl.add(_xPlaying = false);
     _sizeCtl.add(_xSize = (0, 0));
   }
 
-  Future<void> _exoClose() async {
-    final old = _exo;
-    _exo = null;
-    _exoNow.value = null;
-    _exoError.value = null;
-    if (old != null) {
-      old.removeListener(_exoTick);
-      try {
-        await old.dispose();
-      } catch (_) {}
-    }
+  /// Subtitle language from Settings, given to ExoPlayer before each stream
+  /// (it then picks the track by itself), and the subtitle look.
+  Future<void> _exoPrefs() async {
+    final pref = Storage.subtitleLang;
+    await A3nExo.setLanguages(
+      text: switch (pref) { 'en' => ['en'], 'ar_en' => ['ar', 'en'], _ => ['ar'] },
+      textOff: pref == 'off',
+    );
+    await _exoSubStyle();
   }
 
-  Future<void> _exoOpen(String url) async {
-    await _exoClose();
-    _exoReset();
-    _bufCtl.add(_xBuffering = true);
-    final c = VideoPlayerController.networkUrl(
-      Uri.parse(url),
-      httpHeaders: const {'User-Agent': AppConfig.userAgent},
-      // A real Android video surface (straight from the TV's video chip to
-      // the screen) instead of a Flutter texture, which shows only black on
-      // some TVs.
-      viewType: VideoViewType.platformView,
-    );
-    _exo = c;
-    c.addListener(_exoTick);
+  Future<void> _exoSubStyle() async {
     try {
-      await c.initialize().timeout(const Duration(seconds: 25));
-      if (_exo != c) return; // another stream was opened meanwhile
-      _exoNow.value = c;
-      await c.play();
-    } on TimeoutException {
-      if (_exo == c) {
-        _bufCtl.add(_xBuffering = false);
-        _exoError.value = 'Timed out opening the stream';
-      }
-    } catch (e) {
-      if (_exo == c) {
-        _bufCtl.add(_xBuffering = false);
-        _exoError.value = e.toString();
-      }
-    }
+      await A3nExo.subtitleStyle(
+        color: (SubStyle.colors[Storage.subColor] ?? Colors.white).toARGB32(),
+        scale: switch (Storage.subSize) { 's' => 0.8, 'l' => 1.3, _ => 1.0 },
+        background: Storage.subBackground,
+        opacity: Storage.subBgOpacity,
+      );
+    } catch (_) {}
   }
+
+  /// ExoPlayer can't decode this stream: play it with mpv instead.
+  Future<void> _toMpv(String url) async {
+    _fallback.value = true;
+    _exoError.value = null;
+    try {
+      await A3nExo.stop();
+    } catch (_) {}
+    _tune();
+    await player.open(Media(url, httpHeaders: const {'User-Agent': AppConfig.userAgent}));
+  }
+
+  bool get _mpvNow => !isExo || _fallback.value;
 
   // ------------------------------------------------------------ one API for the screens
 
@@ -198,7 +213,17 @@ class PlayerService {
     openedAt = DateTime.now();
     opened.value++;
     if (isExo) {
-      await _exoOpen(url);
+      if (_fallback.value) {
+        _fallback.value = false;
+        try {
+          await player.stop();
+        } catch (_) {}
+      }
+      _exoListen();
+      _exoReset();
+      _bufCtl.add(_xBuffering = true);
+      await _exoPrefs();
+      await A3nExo.open(url, userAgent: AppConfig.userAgent);
     } else {
       await player.open(Media(url, httpHeaders: const {'User-Agent': AppConfig.userAgent}));
     }
@@ -207,7 +232,15 @@ class PlayerService {
   Future<void> stop() async {
     _currentUrl = null;
     if (isExo) {
-      await _exoClose();
+      if (_fallback.value) {
+        try {
+          await player.stop();
+        } catch (_) {}
+        _fallback.value = false;
+      }
+      try {
+        await A3nExo.stop();
+      } catch (_) {}
       _exoReset();
       _bufCtl.add(_xBuffering = false);
     } else {
@@ -215,113 +248,192 @@ class PlayerService {
     }
   }
 
-  Stream<Duration> get positionStream => isExo ? _posCtl.stream : player.stream.position;
-  Duration get position => isExo ? _xPos : player.state.position;
+  Stream<Duration> get positionStream => _mpvNow ? player.stream.position : _posCtl.stream;
+  Duration get position => _mpvNow ? player.state.position : _xPos;
 
-  Stream<Duration> get durationStream => isExo ? _durCtl.stream : player.stream.duration;
-  Duration get duration => isExo ? _xDur : player.state.duration;
+  Stream<Duration> get durationStream => _mpvNow ? player.stream.duration : _durCtl.stream;
+  Duration get duration => _mpvNow ? player.state.duration : _xDur;
 
-  Stream<bool> get playingStream => isExo ? _playCtl.stream : player.stream.playing;
-  bool get playing => isExo ? _xPlaying : player.state.playing;
+  Stream<bool> get playingStream => _mpvNow ? player.stream.playing : _playCtl.stream;
+  bool get playing => _mpvNow ? player.state.playing : _xPlaying;
 
-  Stream<bool> get bufferingStream => isExo ? _bufCtl.stream : player.stream.buffering;
-  bool get buffering => isExo ? _xBuffering : player.state.buffering;
+  Stream<bool> get bufferingStream => _mpvNow ? player.stream.buffering : _bufCtl.stream;
+  bool get buffering => _mpvNow ? player.state.buffering : _xBuffering;
 
   /// Width / height of the picture, (0, 0) while unknown.
   Stream<(int, int)> get videoSizeStream =>
-      isExo ? _sizeCtl.stream : player.stream.videoParams.map((v) => (v.w ?? 0, v.h ?? 0));
+      _mpvNow ? player.stream.videoParams.map((v) => (v.w ?? 0, v.h ?? 0)) : _sizeCtl.stream;
   (int, int) get videoSize {
-    if (isExo) return _xSize;
+    if (!_mpvNow) return _xSize;
     final v = player.state.videoParams;
     return (v.w ?? 0, v.h ?? 0);
   }
 
+  /// Frames per second of the video (0 = unknown yet).
+  Future<double> frameRate() async {
+    if (!_mpvNow) return _xFps;
+    var fps = double.tryParse(await property('container-fps')) ?? 0;
+    if (fps <= 0) fps = double.tryParse(await property('estimated-vf-fps')) ?? 0;
+    return fps;
+  }
+
+  /// "HEVC · HLG" for the info badge ('' = nothing to add).
+  String get videoExtra {
+    if (_mpvNow) return '';
+    final c = _xCodec.toLowerCase();
+    final codec = c.contains('hevc') || c.contains('h265')
+        ? 'HEVC'
+        : c.contains('avc') || c.contains('h264')
+            ? 'H.264'
+            : c.contains('av01')
+                ? 'AV1'
+                : c.contains('vp9')
+                    ? 'VP9'
+                    : '';
+    return [codec, _xHdr].where((x) => x.isNotEmpty).join('  ·  ');
+  }
+
   Future<void> seek(Duration to) async {
-    if (isExo) {
-      await _exo?.seekTo(to);
-    } else {
+    if (_mpvNow) {
       await player.seek(to);
+    } else {
+      await A3nExo.seek(to);
     }
   }
 
   Future<void> resume() async {
-    if (isExo) {
-      await _exo?.play();
-    } else {
+    if (_mpvNow) {
       await player.play();
+    } else {
+      await A3nExo.play();
     }
   }
 
   Future<void> pause() async {
-    if (isExo) {
-      await _exo?.pause();
-    } else {
+    if (_mpvNow) {
       await player.pause();
+    } else {
+      await A3nExo.pause();
     }
   }
 
   Future<void> playOrPause() async {
-    if (isExo) {
-      final c = _exo;
-      if (c == null) return;
-      if (c.value.isPlaying) {
-        await c.pause();
-      } else {
-        await c.play();
-      }
-    } else {
+    if (_mpvNow) {
       await player.playOrPause();
+    } else if (_xPlaying) {
+      await A3nExo.pause();
+    } else {
+      await A3nExo.play();
     }
   }
 
-  /// The picture. [subtitles] is used by mpv only.
-  Widget view({Key? key, SubtitleViewConfiguration? subtitles}) {
-    if (!isExo) {
-      return Video(
-        key: key,
-        controller: controller,
-        controls: NoVideoControls,
-        fill: Colors.black,
-        subtitleViewConfiguration: subtitles ?? const SubtitleViewConfiguration(),
+  // ------------------------------------------------ audio / subtitle tracks
+
+  /// (audio, subtitles) of the stream on screen.
+  Future<(List<PlayerTrack>, List<PlayerTrack>)> tracks() async {
+    if (_mpvNow) {
+      final t = player.state.tracks;
+      final cur = player.state.track;
+      final noSub = cur.subtitle.id == 'no';
+      return (
+        [
+          for (final a in t.audio.where((x) => x.id != 'auto' && x.id != 'no'))
+            PlayerTrack(a.id, a.title ?? '', a.language ?? '', cur.audio.id == a.id),
+        ],
+        [
+          for (final x in t.subtitle.where((x) => x.id != 'auto' && x.id != 'no'))
+            PlayerTrack(x.id, x.title ?? '', x.language ?? '', !noSub && cur.subtitle.id == x.id),
+        ],
       );
     }
-    return ValueListenableBuilder<VideoPlayerController?>(
+    try {
+      final (a, t) = await A3nExo.tracks();
+      return (
+        [for (final x in a) if (x.supported) PlayerTrack(x.id, x.label, x.language, x.selected)],
+        [for (final x in t) if (x.supported) PlayerTrack(x.id, x.label, x.language, x.selected)],
+      );
+    } catch (_) {
+      return (<PlayerTrack>[], <PlayerTrack>[]);
+    }
+  }
+
+  Future<void> selectAudio(String id) async {
+    if (_mpvNow) {
+      final a = player.state.tracks.audio.where((x) => x.id == id);
+      if (a.isNotEmpty) await player.setAudioTrack(a.first);
+    } else {
+      await A3nExo.selectAudio(id);
+    }
+  }
+
+  /// [id] null = subtitles off.
+  Future<void> selectSubtitle(String? id) async {
+    if (_mpvNow) {
+      if (id == null) {
+        await player.setSubtitleTrack(SubtitleTrack.no());
+      } else {
+        final s = player.state.tracks.subtitle.where((x) => x.id == id);
+        if (s.isNotEmpty) await player.setSubtitleTrack(s.first);
+      }
+    } else {
+      await A3nExo.selectText(id);
+    }
+  }
+
+  /// The subtitle look changed in Settings / the tracks menu.
+  Future<void> subtitleStyleChanged() async {
+    if (isExo) await _exoSubStyle();
+  }
+
+  /// The picture. [subtitles] is used by mpv only (ExoPlayer draws its own).
+  Widget view({Key? key, SubtitleViewConfiguration? subtitles}) {
+    Widget mpv() => Video(
+          key: key,
+          controller: controller,
+          controls: NoVideoControls,
+          fill: Colors.black,
+          subtitleViewConfiguration: subtitles ?? const SubtitleViewConfiguration(),
+        );
+    if (!isExo) return mpv();
+    return ValueListenableBuilder<bool>(
       key: key,
-      valueListenable: _exoNow,
-      builder: (context, c, _) => ColoredBox(
-        color: Colors.black,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (c != null)
-              ValueListenableBuilder<VideoPlayerValue>(
-                valueListenable: c,
-                builder: (context, v, _) => Center(
-                  child: AspectRatio(
-                    aspectRatio: v.isInitialized && v.aspectRatio > 0 ? v.aspectRatio : 16 / 9,
-                    child: VideoPlayer(c),
+      valueListenable: _fallback,
+      builder: (context, fb, _) => fb
+          ? mpv()
+          : ColoredBox(
+              color: Colors.black,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  const A3nExoView(),
+                  ValueListenableBuilder<String?>(
+                    valueListenable: _exoError,
+                    builder: (context, err, _) => err == null
+                        ? const SizedBox.shrink()
+                        : Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Text(
+                                'Player error:\n$err',
+                                textAlign: TextAlign.center,
+                                textDirection: TextDirection.ltr,
+                                style: const TextStyle(color: Colors.white70, fontSize: 14),
+                              ),
+                            ),
+                          ),
                   ),
-                ),
+                ],
               ),
-            ValueListenableBuilder<String?>(
-              valueListenable: _exoError,
-              builder: (context, err, _) => err == null
-                  ? const SizedBox.shrink()
-                  : Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Text(
-                          'Weak-device player error:\n$err',
-                          textAlign: TextAlign.center,
-                          textDirection: TextDirection.ltr,
-                          style: const TextStyle(color: Colors.white70, fontSize: 14),
-                        ),
-                      ),
-                    ),
             ),
-          ],
-        ),
-      ),
     );
   }
+}
+
+/// One audio / subtitle track (either player).
+class PlayerTrack {
+  final String id;
+  final String title;
+  final String language;
+  final bool selected;
+  const PlayerTrack(this.id, this.title, this.language, this.selected);
 }

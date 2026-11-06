@@ -1,0 +1,19 @@
+name: a3n_exo
+description: The A3N IPTV Android TV player (Media3 ExoPlayer on a native video surface).
+version: 1.0.0
+publish_to: none
+
+environment:
+  sdk: '>=3.4.0 <4.0.0'
+  flutter: '>=3.22.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.a3n.exo
+        pluginClass: A3nExoPlugin

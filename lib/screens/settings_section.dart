@@ -301,9 +301,7 @@ class _SettingsSectionState extends State<SettingsSection> {
           },
         ),
       ),
-      // Needs the frame rate of the video: main player only.
-      if (_engine != 'exo')
-        _SwitchRow(
+      _SwitchRow(
           title: tr('Match screen refresh rate (movies & series)', 'مطابقة معدل الشاشة (الأفلام والمسلسلات)'),
           subtitle: tr('Smoother motion: the TV switches to the rate of the video (e.g. 50 Hz) while it plays. The screen goes black for a second when it switches, that is normal.',
               'حركة أنعم: التلفزيون يتحوّل لمعدل الفيديو (مثل 50 هيرتز) وقت التشغيل. الشاشة تسوّد ثانية وقت التحويل، وهذا طبيعي.'),
@@ -318,14 +316,14 @@ class _SettingsSectionState extends State<SettingsSection> {
 
   List<Widget> _playback() {
     final engines = [
-      ('mpv', tr('Main player', 'المشغّل الأساسي')),
-      ('exo', tr('Weak-device player', 'مشغّل الأجهزة الضعيفة')),
+      ('exo', tr('Main player (ExoPlayer)', 'المشغّل الأساسي (ExoPlayer)')),
+      ('mpv', tr('Other player (mpv)', 'المشغّل البديل (mpv)')),
     ];
     return [
       _ChoiceRow(
         title: tr('Video player', 'مشغّل الفيديو'),
-        subtitle: tr('If video stutters or is slow on your device, try the weak-device player (no audio / subtitle choice). Reopen the app after changing.',
-            'إذا الفيديو يقطّع أو بطيء على جهازك، جرّب مشغّل الأجهزة الضعيفة (بدون اختيار الصوت والترجمة). اقفل التطبيق وافتحه بعد التغيير.'),
+        subtitle: tr('The main player suits most TVs. Try the other one only if a channel or a movie doesn\'t play well. Reopen the app after changing.',
+            'المشغّل الأساسي يناسب أغلب الأجهزة. جرّب البديل بس إذا قناة أو فلم ما اشتغل زين. اقفل التطبيق وافتحه بعد التغيير.'),
         value: _labelOf(_engine, engines),
         onTap: () => _choose<String>(
           title: tr('Video player', 'مشغّل الفيديو'),

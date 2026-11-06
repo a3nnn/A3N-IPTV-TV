@@ -86,12 +86,11 @@ class _StreamInfoBadgeState extends State<StreamInfoBadge> {
     }
     await Future<void>.delayed(const Duration(milliseconds: 800));
     if (!mounted || run != _run) return;
-    if (!p.isExo && p.playing && !p.buffering) {
-      fps = double.tryParse(await _svc.property('container-fps')) ?? 0;
-    }
+    if (p.playing && !p.buffering) fps = await _svc.frameRate();
     if (!mounted || run != _run) return;
+    final extra = p.videoExtra;
     setState(() {
-      _text = _label(w, h, fps);
+      _text = [_label(w, h, fps), if (extra.isNotEmpty) extra].join('  ·  ');
       _visible = true;
     });
     if (widget.show != null) return; // follows the info bar

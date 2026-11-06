@@ -117,7 +117,7 @@ class Storage {
   static Future<void> setMatchFrameRate(bool v) => _p.setBool('match_frame_rate', v);
 
   /// Any of the weak-device options is on (keeps the app as light as possible).
-  static bool get weakDevice => liteMode || playerEngine == 'exo';
+  static bool get weakDevice => liteMode;
 
   /// Play the channel in the small preview while browsing.
   /// Off in light mode (Lite) whatever the setting says.
@@ -125,10 +125,11 @@ class Storage {
   static bool get previewEnabled => !liteMode;
   static bool get previewEnabledSetting => _p.getBool('preview_enabled') ?? true;
 
-  /// Video player engine: 'mpv' (default) or 'exo' (Android system player,
-  /// for old TVs). Read at start, so the app is reopened after changing it.
-  static String get playerEngine => _p.getString('player_engine') ?? 'mpv';
-  static Future<void> setPlayerEngine(String v) => _p.setString('player_engine', v);
+  /// Video player engine: 'exo' (ExoPlayer, the main one since 1.6.0) or
+  /// 'mpv'. Read at start, so the app is reopened after changing it. (New
+  /// key: everybody starts on ExoPlayer.)
+  static String get playerEngine => _p.getString('player_engine_v2') ?? 'exo';
+  static Future<void> setPlayerEngine(String v) => _p.setString('player_engine_v2', v);
 
   /// Light mode for weak devices (Fire Stick...). See lib/lite.dart.
   static bool get liteMode => _p.getBool('lite_mode') ?? false;

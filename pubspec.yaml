@@ -14,7 +14,8 @@ dependencies:
   media_kit: ^1.1.11
   media_kit_video: ^1.2.5
   media_kit_libs_video: ^1.0.5
-  video_player: ^2.10.0
+  a3n_exo:
+    path: packages/a3n_exo
   flutter_displaymode: '>=0.6.0 <1.0.0'
   sqlite3: ^2.4.0
   sqlite3_flutter_libs: ^0.5.24

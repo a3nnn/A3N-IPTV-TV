@@ -113,7 +113,8 @@ class _PlayerPageState extends State<PlayerPage> {
     _started = widget.startAt <= Duration.zero;
     _svc.play(widget.url);
     unawaited(_matchFrameRate());
-    // Audio / subtitle choice: mpv only (the system player can't list them).
+    // Preferred subtitles: mpv picks them here; ExoPlayer is told the
+    // language before the stream opens and picks them by itself.
     if (!_svc.isExo) _tracksSub = _svc.player.stream.tracks.listen(_pickSubtitles);
     if (!_started) {
       _seekTarget = widget.startAt; // the bar shows the target right away
@@ -140,14 +141,13 @@ class _PlayerPageState extends State<PlayerPage> {
     if (mounted && _seekTimer?.isActive != true) setState(() => _seekTarget = null);
   }
 
-  /// Settings > Display > Match screen refresh rate (main player only).
+  /// Settings > Display > Match screen refresh rate.
   Future<void> _matchFrameRate() async {
-    if (!Storage.matchFrameRate || _svc.isExo) return;
+    if (!Storage.matchFrameRate) return;
     await Future<void>.delayed(const Duration(seconds: 1));
     for (var i = 0; i < 12 && mounted; i++) {
       if (_svc.currentUrl != widget.url) return;
-      var fps = double.tryParse(await _svc.property('container-fps')) ?? 0;
-      if (fps <= 0) fps = double.tryParse(await _svc.property('estimated-vf-fps')) ?? 0;
+      final fps = await _svc.frameRate();
       if (fps > 0) {
         await FrameRateMatch.apply(fps);
         return;
@@ -175,7 +175,7 @@ class _PlayerPageState extends State<PlayerPage> {
   final FocusNode _nextBtn = FocusNode();
 
   /// The buttons on screen, left to right.
-  List<FocusNode> get _buttons => [_playBtn, if (!_svc.isExo) _tracksBtn, if (widget.next != null) _nextBtn];
+  List<FocusNode> get _buttons => [_playBtn, _tracksBtn, if (widget.next != null) _nextBtn];
 
   /// On the buttons with no key pressed for 3 s: hide the bar, back to the video.
   Timer? _buttonsTimer;
@@ -359,10 +359,9 @@ class _PlayerPageState extends State<PlayerPage> {
 
   /// ▼ on the remote: pick the audio language and the subtitles of the file.
   Future<void> _openTracks() async {
-    if (_svc.isExo) return; // the system player can't list audio / subtitles
     _hideTimer?.cancel();
     _buttonsTimer?.cancel();
-    await showDialog<void>(context: context, builder: (_) => _TracksDialog(player: _svc.player));
+    await showDialog<void>(context: context, builder: (_) => const _TracksDialog());
     if (!mounted) return;
     if (_inButtons) {
       _tracksBtn.requestFocus();
@@ -487,16 +486,14 @@ class _PlayerPageState extends State<PlayerPage> {
                                 onPressed: () => p.playOrPause(),
                               ),
                             ),
-                            // Audio & subtitles: mpv only (hidden with the system player).
-                            if (!p.isExo) ...[
-                              const SizedBox(width: 10),
-                              _RoundIconButton(
-                                focusNode: _tracksBtn,
-                                icon: Icons.subtitles_rounded,
-                                tooltip: tr('Audio & subtitles', 'الصوت والترجمة'),
-                                onPressed: _openTracks,
-                              ),
-                            ],
+                            // Audio & subtitles (both players).
+                            const SizedBox(width: 10),
+                            _RoundIconButton(
+                              focusNode: _tracksBtn,
+                              icon: Icons.subtitles_rounded,
+                              tooltip: tr('Audio & subtitles', 'الصوت والترجمة'),
+                              onPressed: _openTracks,
+                            ),
                             // Next episode: right next to subtitles, so ▶ reaches it at once.
                             if (widget.next != null) ...[
                               const SizedBox(width: 10),
@@ -605,21 +602,45 @@ String _trackLabel(String id, String? title, String? language, int index) {
 }
 
 class _TracksDialog extends StatefulWidget {
-  final Player player;
-  const _TracksDialog({required this.player});
+  const _TracksDialog();
 
   @override
   State<_TracksDialog> createState() => _TracksDialogState();
 }
 
 class _TracksDialogState extends State<_TracksDialog> {
+  final PlayerService _p = PlayerService.instance;
+  List<PlayerTrack>? _audio;
+  List<PlayerTrack> _subs = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _read();
+    _p.tracksChanged.addListener(_read);
+  }
+
+  @override
+  void dispose() {
+    _p.tracksChanged.removeListener(_read);
+    super.dispose();
+  }
+
+  Future<void> _read() async {
+    final (a, s) = await _p.tracks();
+    if (mounted) {
+      setState(() {
+        _audio = a;
+        _subs = s;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final p = widget.player;
-    final tracks = p.state.tracks;
-    final current = p.state.track;
-    final audio = tracks.audio.where((t) => t.id != 'auto' && t.id != 'no').toList();
-    final subs = tracks.subtitle.where((t) => t.id != 'auto' && t.id != 'no').toList();
+    final p = _p;
+    final audio = _audio ?? const <PlayerTrack>[];
+    final subs = _subs;
 
     Widget option({
       required String label,
@@ -661,7 +682,9 @@ class _TracksDialogState extends State<_TracksDialog> {
         );
 
     final audioList = <Widget>[
-      if (audio.isEmpty)
+      if (_audio == null)
+        const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)))
+      else if (audio.isEmpty)
         Padding(
           padding: const EdgeInsets.all(12),
           child: Text(tr('Only one audio track', 'يوجد مسار صوت واحد فقط'), style: const TextStyle(color: AppConfig.textSecondary)),
@@ -669,10 +692,10 @@ class _TracksDialogState extends State<_TracksDialog> {
       for (var i = 0; i < audio.length; i++)
         option(
           label: _trackLabel(audio[i].id, audio[i].title, audio[i].language, i),
-          selected: current.audio.id == audio[i].id,
-          autofocus: current.audio.id == audio[i].id || (i == 0 && !audio.any((a) => a.id == current.audio.id)),
+          selected: audio[i].selected,
+          autofocus: audio[i].selected || (i == 0 && !audio.any((a) => a.selected)),
           onTap: () {
-            p.setAudioTrack(audio[i]);
+            p.selectAudio(audio[i].id);
             Navigator.of(context).pop();
           },
         ),
@@ -681,23 +704,23 @@ class _TracksDialogState extends State<_TracksDialog> {
     final subList = <Widget>[
       option(
         label: tr('Off', 'بدون ترجمة'),
-        selected: current.subtitle.id == 'no' || !subs.any((s) => s.id == current.subtitle.id),
+        selected: !subs.any((s) => s.selected),
         autofocus: audio.isEmpty,
         onTap: () {
-          p.setSubtitleTrack(SubtitleTrack.no());
+          p.selectSubtitle(null);
           Navigator.of(context).pop();
         },
       ),
       for (var i = 0; i < subs.length; i++)
         option(
           label: _trackLabel(subs[i].id, subs[i].title, subs[i].language, i),
-          selected: current.subtitle.id == subs[i].id,
+          selected: subs[i].selected,
           onTap: () {
-            p.setSubtitleTrack(subs[i]);
+            p.selectSubtitle(subs[i].id);
             Navigator.of(context).pop();
           },
         ),
-      if (subs.isEmpty)
+      if (subs.isEmpty && _audio != null)
         Padding(
           padding: const EdgeInsets.all(12),
           child: Text(tr('No subtitles in this file', 'ما فيه ترجمة في هذا الملف'), style: const TextStyle(color: AppConfig.textSecondary)),
