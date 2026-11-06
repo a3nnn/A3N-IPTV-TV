@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:device_info_plus/device_info_plus.dart';
@@ -5,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import '../config.dart';
 import 'storage.dart';
+import 'xtream_api.dart';
 
 class LicenseStatus {
   final bool blocked;
@@ -83,6 +85,7 @@ class LicenseService {
       final blocked = data['blocked'] == true;
       final message = data['message']?.toString();
       await Storage.setLicense(blocked, message);
+      unawaited(_reportExpiry(base));
       return LicenseStatus(blocked, message);
     } catch (_) {
       return cached;
@@ -115,5 +118,24 @@ class LicenseService {
       _name = 'Android TV';
     }
     return _name!;
+  }
+
+  /// The account's expiry date, shown next to the username in Category
+  /// Manager ('unlimited' when it has none). Sent with every check-in.
+  static Future<void> _reportExpiry(String base) async {
+    final acc = Session.account;
+    if (acc == null) return; // not signed in yet (first check-in at start)
+    try {
+      await http
+          .post(
+            Uri.parse('$base/rest/v1/rpc/report_expiry'),
+            headers: {'apikey': AppConfig.supabaseKey, 'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'p_device_id': Storage.deviceId,
+              'p_expires': acc.expDate?.toUtc().toIso8601String() ?? 'unlimited',
+            }),
+          )
+          .timeout(const Duration(seconds: 6));
+    } catch (_) {}
   }
 }
