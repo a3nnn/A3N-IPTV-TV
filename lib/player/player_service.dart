@@ -135,6 +135,7 @@ class PlayerService {
       switch (m['event']) {
         case 'tracks':
           tracksChanged.value++;
+          unawaited(_exoCheckSubtitles());
         case 'error':
           _exoError.value = '${m['message'] ?? m['code'] ?? 'error'}';
           if (m['decoder'] == true && _currentUrl != null && !_fallback.value) {
@@ -189,6 +190,36 @@ class PlayerService {
         background: Storage.subBackground,
         opacity: Storage.subBgOpacity,
       );
+    } catch (_) {}
+  }
+
+  /// ExoPlayer also turns on subtitles the file marks as "default": keep only
+  /// the languages chosen in Settings (checked once per stream, so a choice
+  /// made in the menu afterwards stays).
+  String? _subsCheckedFor;
+  Future<void> _exoCheckSubtitles() async {
+    final url = _currentUrl;
+    if (url == null || _subsCheckedFor == url || _fallback.value) return;
+    final pref = Storage.subtitleLang;
+    if (pref == 'off') {
+      _subsCheckedFor = url;
+      return;
+    }
+    try {
+      final (_, subs) = await A3nExo.tracks();
+      if (subs.isEmpty) return; // tracks not known yet
+      _subsCheckedFor = url;
+      final wanted = switch (pref) { 'en' => ['en'], 'ar_en' => ['ar', 'en'], _ => ['ar'] };
+      bool ok(String lang) {
+        final l = lang.toLowerCase();
+        return wanted.any((w) => l == w || l.startsWith('$w-') || (w == 'ar' && l == 'ara') || (w == 'en' && l == 'eng'));
+      }
+
+      final on = subs.where((x) => x.selected).toList();
+      if (on.isNotEmpty && !ok(on.first.language)) {
+        final better = subs.where((x) => ok(x.language) && x.supported).toList();
+        await A3nExo.selectText(better.isEmpty ? null : better.first.id);
+      }
     } catch (_) {}
   }
 

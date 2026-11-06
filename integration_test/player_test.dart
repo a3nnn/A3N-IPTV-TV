@@ -30,6 +30,7 @@ void main() {
     MediaKit.ensureInitialized();
     await Storage.init();
     await Storage.setPlayerEngine('exo');
+    await Storage.setSubtitleLang('ar');
     final p = PlayerService.instance;
     expect(p.isExo, isTrue);
 
@@ -51,6 +52,10 @@ void main() {
         'subs=${subs.map((s) => '${s.language}/${s.title}/${s.selected}').toList()}');
     expect(audio, isNotEmpty);
     expect(subs, isNotEmpty, reason: 'this stream has subtitles');
+    // Settings say Arabic: the file's default English subtitles are turned off.
+    await t.pump(const Duration(seconds: 2));
+    final (_, subsAr) = await p.tracks();
+    expect(subsAr.any((s) => s.selected), isFalse, reason: 'no Arabic subtitles in this stream: off');
 
     await p.selectSubtitle(subs.first.id);
     await t.pump(const Duration(seconds: 2));
