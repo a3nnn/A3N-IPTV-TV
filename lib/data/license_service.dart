@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../config.dart';
@@ -26,6 +27,29 @@ class LicenseService {
 
   static LicenseStatus get cached =>
       Storage.licenseBlocked ? LicenseStatus(true, Storage.licenseMessage) : LicenseStatus.allowed;
+
+  /// A message sent from A3N Manager, to show once (null = none).
+  static final ValueNotifier<({int id, String text})?> notice = ValueNotifier(null);
+  static final Set<int> _shown = {};
+
+  /// The message was shown: it is not sent to this device again.
+  static Future<void> noticeSeen(int id) async {
+    _shown.add(id);
+    if (notice.value?.id == id) notice.value = null;
+    if (!enabled) return;
+    final base = AppConfig.supabaseUrl.endsWith('/')
+        ? AppConfig.supabaseUrl.substring(0, AppConfig.supabaseUrl.length - 1)
+        : AppConfig.supabaseUrl;
+    try {
+      await http
+          .post(
+            Uri.parse('$base/rest/v1/rpc/notice_seen'),
+            headers: {'apikey': AppConfig.supabaseKey, 'Content-Type': 'application/json'},
+            body: jsonEncode({'p_device_id': Storage.deviceId, 'p_notice_id': id}),
+          )
+          .timeout(const Duration(seconds: 6));
+    } catch (_) {}
+  }
 
   static Map<String, String?>? _geo;
 
@@ -85,6 +109,12 @@ class LicenseService {
       final blocked = data['blocked'] == true;
       final message = data['message']?.toString();
       await Storage.setLicense(blocked, message);
+      // A message from A3N Manager not seen yet on this device.
+      final nid = (data['notice_id'] as num?)?.toInt();
+      final ntext = data['notice']?.toString().trim() ?? '';
+      if (nid != null && ntext.isNotEmpty && !_shown.contains(nid) && notice.value?.id != nid) {
+        notice.value = (id: nid, text: ntext);
+      }
       unawaited(_reportExpiry(base));
       return LicenseStatus(blocked, message);
     } catch (_) {

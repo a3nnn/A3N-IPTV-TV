@@ -93,6 +93,10 @@ class _HomeScreenState extends State<HomeScreen> {
     // Check in every 2 minutes: a block takes effect while the app is open,
     // and Supabase shows this device as online.
     _licenseTimer = Timer.periodic(const Duration(minutes: 2), (_) => _checkLicense());
+    // Messages sent from A3N Manager (shown once, the app keeps working).
+    LicenseService.notice.addListener(_showNotice);
+    PlayerService.instance.fullscreen.addListener(_showNotice);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _showNotice());
     // Look for a newer version a few seconds after opening (optional update).
     Future.delayed(const Duration(seconds: 3), _checkUpdate);
     // Lists saved more than a day ago: updated quietly, one after the other.
@@ -108,9 +112,40 @@ class _HomeScreenState extends State<HomeScreen> {
     await showUpdateDialog(context, info);
   }
 
+  bool _noticeOpen = false;
+
+  Future<void> _showNotice() async {
+    final n = LicenseService.notice.value;
+    if (n == null || _noticeOpen || !mounted) return;
+    if (PlayerService.instance.fullscreen.value) return; // shown when full screen ends
+    _noticeOpen = true;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppConfig.surface,
+        title: Row(children: [
+          Icon(Icons.campaign_rounded, color: AppConfig.accent),
+          const SizedBox(width: 12),
+          Text(tr('Message', 'رسالة')),
+        ]),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: SingleChildScrollView(child: Text(n.text, style: const TextStyle(fontSize: 18, height: 1.5))),
+        ),
+        actions: [
+          FilledButton(autofocus: true, onPressed: () => Navigator.pop(ctx), child: Text(tr('OK', 'حسناً'))),
+        ],
+      ),
+    );
+    _noticeOpen = false;
+    await LicenseService.noticeSeen(n.id);
+  }
+
   @override
   void dispose() {
     _licenseTimer?.cancel();
+    LicenseService.notice.removeListener(_showNotice);
+    PlayerService.instance.fullscreen.removeListener(_showNotice);
     super.dispose();
   }
 
