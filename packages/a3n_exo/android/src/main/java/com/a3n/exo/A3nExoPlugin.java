@@ -146,9 +146,12 @@ public class A3nExoPlugin implements FlutterPlugin, ActivityAware, MethodChannel
     player.setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT);
     player.addListener(new Player.Listener() {
       @Override public void onPlaybackStateChanged(int state) { sendState(); }
-      @Override public void onIsPlayingChanged(boolean playing) {
-        keepAwake(playing);
-        sendState();
+      @Override public void onIsPlayingChanged(boolean playing) { sendState(); }
+      // Screen kept on while a video plays or loads (not paused / ended).
+      @Override public void onEvents(@NonNull Player p, @NonNull Player.Events e) {
+        int st = p.getPlaybackState();
+        boolean on = p.getPlayWhenReady() && (st == Player.STATE_READY || st == Player.STATE_BUFFERING);
+        if (on != awake) keepAwake(on);
       }
       @Override public void onVideoSizeChanged(@NonNull VideoSize size) { sendState(); }
       @Override public void onTracksChanged(@NonNull Tracks tracks) {
