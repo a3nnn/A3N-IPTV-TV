@@ -85,5 +85,13 @@ void main() {
     await p.stop();
     await t.pump(const Duration(seconds: 1));
     expect(p.playing, isFalse);
+
+    // ---- Continue watching: opens right at the saved position
+    await p.play(_mp4, start: const Duration(seconds: 120));
+    final resumed = await _until(t, () => p.playing && p.position >= const Duration(seconds: 115), seconds: 30);
+    // ignore: avoid_print
+    print('resume: playing=${p.playing} position=${p.position}');
+    expect(resumed, isTrue, reason: 'should play from 2:00');
+    await p.stop();
   });
 }

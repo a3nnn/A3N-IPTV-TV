@@ -111,7 +111,7 @@ class _PlayerPageState extends State<PlayerPage> {
   void initState() {
     super.initState();
     _started = widget.startAt <= Duration.zero;
-    _svc.play(widget.url);
+    _svc.play(widget.url, start: widget.startAt);
     unawaited(_matchFrameRate());
     // Preferred subtitles: mpv picks them here; ExoPlayer is told the
     // language before the stream opens and picks them by itself.
@@ -134,9 +134,12 @@ class _PlayerPageState extends State<PlayerPage> {
     _durSub?.cancel();
     await Future<void>.delayed(const Duration(milliseconds: 400));
     if (!mounted) return;
-    try {
-      await _svc.seek(widget.startAt);
-    } catch (_) {}
+    // ExoPlayer already opened the video at [startAt]; only mpv jumps.
+    if (_svc.usingMpv) {
+      try {
+        await _svc.seek(widget.startAt);
+      } catch (_) {}
+    }
     await Future<void>.delayed(const Duration(milliseconds: 400));
     if (mounted && _seekTimer?.isActive != true) setState(() => _seekTarget = null);
   }

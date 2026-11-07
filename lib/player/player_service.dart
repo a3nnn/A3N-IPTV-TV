@@ -236,9 +236,15 @@ class PlayerService {
 
   bool get _mpvNow => !isExo || _fallback.value;
 
+  /// mpv plays now (picked in Settings, or ExoPlayer failed on this video).
+  bool get usingMpv => _mpvNow;
+
   // ------------------------------------------------------------ one API for the screens
 
-  Future<void> play(String url) async {
+  /// [start]: ExoPlayer opens the video right there (one connection to the
+  /// server; jumping after the start opened a second one, which some
+  /// servers refuse and the video kept loading). mpv starts at 0.
+  Future<void> play(String url, {Duration start = Duration.zero}) async {
     if (_currentUrl == url) return;
     _currentUrl = url;
     openedAt = DateTime.now();
@@ -254,7 +260,7 @@ class PlayerService {
       _exoReset();
       _bufCtl.add(_xBuffering = true);
       await _exoPrefs();
-      await A3nExo.open(url, userAgent: AppConfig.userAgent);
+      await A3nExo.open(url, userAgent: AppConfig.userAgent, start: start);
     } else {
       await player.open(Media(url, httpHeaders: const {'User-Agent': AppConfig.userAgent}));
     }
