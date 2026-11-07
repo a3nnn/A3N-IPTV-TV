@@ -109,6 +109,7 @@ class LicenseService {
       final blocked = data['blocked'] == true;
       final message = data['message']?.toString();
       await Storage.setLicense(blocked, message);
+      await Storage.setLicenseReason(blocked ? (data['reason']?.toString() ?? '') : '');
       // A message from A3N Manager not seen yet on this device.
       final nid = (data['notice_id'] as num?)?.toInt();
       final ntext = data['notice']?.toString().trim() ?? '';

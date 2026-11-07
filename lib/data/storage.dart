@@ -98,6 +98,10 @@ class Storage {
   static bool get licenseBlocked => _p.getBool('license_blocked') ?? false;
   static String? get licenseMessage => _p.getString('license_message');
 
+  /// Why it is blocked: 'device', 'username', 'locked', 'limit' ('' = not known).
+  static String get licenseReason => _p.getString('license_reason') ?? '';
+  static Future<void> setLicenseReason(String r) => _p.setString('license_reason', r);
+
   static Future<void> setLicense(bool blocked, String? message) async {
     await _p.setBool('license_blocked', blocked);
     if (message == null || message.isEmpty) {

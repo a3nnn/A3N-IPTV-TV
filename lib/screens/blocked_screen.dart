@@ -44,6 +44,14 @@ class _BlockedScreenState extends State<BlockedScreen> {
     });
   }
 
+  /// The title, by the reason sent from Supabase (A3N Manager).
+  static String _title() => switch (Storage.licenseReason) {
+        'locked' => tr('This account is for another device.', 'هذا الحساب مخصص لجهاز آخر.'),
+        'limit' => tr('This account is already used on the most devices allowed.', 'هذا الحساب وصل للحد الأعلى من الأجهزة.'),
+        'username' => tr('This account has been disabled.', 'تم إيقاف هذا الحساب.'),
+        _ => tr('This app has been disabled on this device.', 'تم إيقاف التطبيق على هذا الجهاز.'),
+      };
+
   @override
   Widget build(BuildContext context) {
     final msg = (_message ?? '').trim();
@@ -68,7 +76,7 @@ class _BlockedScreenState extends State<BlockedScreen> {
                   const Icon(Icons.block_rounded, color: AppConfig.danger, size: 40),
                   const SizedBox(height: 14),
                   Text(
-                    tr('This app has been disabled on this device.', 'تم إيقاف التطبيق على هذا الجهاز.'),
+                    _title(),
                     textAlign: TextAlign.center,
                     style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
                   ),
