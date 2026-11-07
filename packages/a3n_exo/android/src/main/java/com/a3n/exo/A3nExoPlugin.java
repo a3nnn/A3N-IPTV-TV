@@ -1,6 +1,8 @@
 package com.a3n.exo;
 
+import android.app.Activity;
 import android.content.Context;
+import android.view.WindowManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.os.Handler;
@@ -45,6 +47,8 @@ import java.util.List;
 import java.util.Map;
 
 import io.flutter.embedding.engine.plugins.FlutterPlugin;
+import io.flutter.embedding.engine.plugins.activity.ActivityAware;
+import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding;
 import io.flutter.plugin.common.EventChannel;
 import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
@@ -61,7 +65,7 @@ import io.flutter.plugin.platform.PlatformViewFactory;
  * view "a3n_exo/view").
  */
 @OptIn(markerClass = UnstableApi.class)
-public class A3nExoPlugin implements FlutterPlugin, MethodChannel.MethodCallHandler, EventChannel.StreamHandler {
+public class A3nExoPlugin implements FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler, EventChannel.StreamHandler {
   private Context context;
   private MethodChannel methods;
   private EventChannel events;
@@ -71,6 +75,8 @@ public class A3nExoPlugin implements FlutterPlugin, MethodChannel.MethodCallHand
   @Nullable private ExoPlayer player;
   @Nullable private DefaultTrackSelector selector;
   private final List<PlayerView> views = new ArrayList<>();
+  @Nullable private Activity activity;
+  private boolean awake = false;
 
   // Subtitle look (from the app's settings).
   private int subColor = Color.WHITE;
@@ -140,7 +146,10 @@ public class A3nExoPlugin implements FlutterPlugin, MethodChannel.MethodCallHand
     player.setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT);
     player.addListener(new Player.Listener() {
       @Override public void onPlaybackStateChanged(int state) { sendState(); }
-      @Override public void onIsPlayingChanged(boolean playing) { sendState(); }
+      @Override public void onIsPlayingChanged(boolean playing) {
+        keepAwake(playing);
+        sendState();
+      }
       @Override public void onVideoSizeChanged(@NonNull VideoSize size) { sendState(); }
       @Override public void onTracksChanged(@NonNull Tracks tracks) {
         Map<String, Object> m = new HashMap<>();
@@ -187,7 +196,33 @@ public class A3nExoPlugin implements FlutterPlugin, MethodChannel.MethodCallHand
     p.setPlayWhenReady(true);
   }
 
+  /// While a video plays the TV must not start its screensaver (paused or
+  /// stopped: the TV's normal screensaver time applies again).
+  private void keepAwake(boolean on) {
+    awake = on;
+    if (activity != null) {
+      if (on) activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+      else activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    }
+    for (PlayerView v : views) v.setKeepScreenOn(on);
+  }
+
+  @Override public void onAttachedToActivity(@NonNull ActivityPluginBinding b) {
+    activity = b.getActivity();
+    keepAwake(awake);
+  }
+  @Override public void onDetachedFromActivityForConfigChanges() { activity = null; }
+  @Override public void onReattachedToActivityForConfigChanges(@NonNull ActivityPluginBinding b) {
+    activity = b.getActivity();
+    keepAwake(awake);
+  }
+  @Override public void onDetachedFromActivity() {
+    if (activity != null) activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    activity = null;
+  }
+
   private void release() {
+    keepAwake(false);
     for (PlayerView v : views) v.setPlayer(null);
     if (player != null) {
       player.release();
@@ -310,6 +345,12 @@ public class A3nExoPlugin implements FlutterPlugin, MethodChannel.MethodCallHand
   public void onMethodCall(@NonNull MethodCall call, @NonNull MethodChannel.Result result) {
     try {
       switch (call.method) {
+        case "awake": {
+          boolean flag = activity != null
+              && (activity.getWindow().getAttributes().flags & WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) != 0;
+          result.success(flag);
+          break;
+        }
         case "open": {
           String url = call.argument("url");
           String ua = call.argument("userAgent");
@@ -417,6 +458,7 @@ public class A3nExoPlugin implements FlutterPlugin, MethodChannel.MethodCallHand
       v.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
       styleSubtitles(v);
       views.add(v);
+      v.setKeepScreenOn(awake);
       v.setPlayer(ensurePlayer());
       return new PlatformView() {
         @Override public View getView() { return v; }

@@ -3,6 +3,7 @@
 // audio / subtitle tracks, seeking and stopping.
 import 'dart:async';
 
+import 'package:a3n_exo/a3n_exo.dart';
 import 'package:a3n_iptv_tv/data/storage.dart';
 import 'package:a3n_iptv_tv/player/player_service.dart';
 import 'package:flutter/material.dart';
@@ -77,8 +78,11 @@ void main() {
     // ignore: avoid_print
     print('after seek: position=${p.position}');
     expect(seeked, isTrue);
+    expect(await A3nExo.awake(), isTrue, reason: 'no screensaver while playing');
     await p.pause();
     expect(await _until(t, () => !p.playing, seconds: 10), isTrue);
+    await t.pump(const Duration(milliseconds: 500));
+    expect(await A3nExo.awake(), isFalse, reason: 'screensaver allowed when paused');
     await p.resume();
     expect(await _until(t, () => p.playing, seconds: 15), isTrue);
 

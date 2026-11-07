@@ -32,6 +32,9 @@ class A3nExo {
   static Future<void> open(String url, {required String userAgent, Duration start = Duration.zero}) =>
       _m.invokeMethod('open', {'url': url, 'userAgent': userAgent, 'startMs': start.inMilliseconds});
   static Future<void> stop() => _m.invokeMethod('stop');
+
+  /// The screen is kept on now (a video plays).
+  static Future<bool> awake() async => await _m.invokeMethod<bool>('awake') ?? false;
   static Future<void> play() => _m.invokeMethod('play');
   static Future<void> pause() => _m.invokeMethod('pause');
   static Future<void> seek(Duration to) => _m.invokeMethod('seek', {'ms': to.inMilliseconds});
