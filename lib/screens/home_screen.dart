@@ -34,7 +34,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   int _index = HomeScreen.takeStartIndex();
   // One key per section so the live section keeps its state when it
   // switches between normal and full-window layouts.
@@ -90,9 +90,10 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // Check in every 2 minutes: a block takes effect while the app is open,
+    // Check in every minute: a block takes effect while the app is open,
     // and Supabase shows this device as online.
-    _licenseTimer = Timer.periodic(const Duration(minutes: 2), (_) => _checkLicense());
+    _startCheckins();
+    WidgetsBinding.instance.addObserver(this);
     // Messages sent from A3N Manager (shown once, the app keeps working).
     LicenseService.notice.addListener(_showNotice);
     PlayerService.instance.fullscreen.addListener(_showNotice);
@@ -110,6 +111,26 @@ class _HomeScreenState extends State<HomeScreen> {
     if (info == null || !mounted) return;
     if (PlayerService.instance.fullscreen.value) return; // don't interrupt full-screen TV
     await showUpdateDialog(context, info);
+  }
+
+  void _startCheckins() {
+    _licenseTimer?.cancel();
+    _licenseTimer = Timer.periodic(const Duration(minutes: 1), (_) => _checkLicense());
+  }
+
+  /// Left the app (Home button, other app, TV screen off): offline in A3N
+  /// Manager right away, no check-ins in the background. Back: online again.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+      if (_licenseTimer == null) return;
+      _licenseTimer?.cancel();
+      _licenseTimer = null;
+      LicenseService.goOffline();
+    } else if (state == AppLifecycleState.resumed && _licenseTimer == null) {
+      _startCheckins();
+      _checkLicense();
+    }
   }
 
   bool _noticeOpen = false;
@@ -143,6 +164,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _licenseTimer?.cancel();
     LicenseService.notice.removeListener(_showNotice);
     PlayerService.instance.fullscreen.removeListener(_showNotice);

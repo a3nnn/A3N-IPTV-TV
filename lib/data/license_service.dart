@@ -32,6 +32,23 @@ class LicenseService {
   static final ValueNotifier<({int id, String text})?> notice = ValueNotifier(null);
   static final Set<int> _shown = {};
 
+  /// The app was closed: shown offline in A3N Manager right away.
+  static Future<void> goOffline() async {
+    if (!enabled) return;
+    final base = AppConfig.supabaseUrl.endsWith('/')
+        ? AppConfig.supabaseUrl.substring(0, AppConfig.supabaseUrl.length - 1)
+        : AppConfig.supabaseUrl;
+    try {
+      await http
+          .post(
+            Uri.parse('$base/rest/v1/rpc/go_offline'),
+            headers: {'apikey': AppConfig.supabaseKey, 'Content-Type': 'application/json'},
+            body: jsonEncode({'p_device_id': Storage.deviceId}),
+          )
+          .timeout(const Duration(seconds: 3));
+    } catch (_) {}
+  }
+
   /// The message was shown: it is not sent to this device again.
   static Future<void> noticeSeen(int id) async {
     _shown.add(id);
